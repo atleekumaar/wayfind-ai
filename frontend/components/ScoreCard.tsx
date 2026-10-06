@@ -1,21 +1,39 @@
 'use client';
 
 import React from 'react';
-import { AccessibilityClassification, ScoreBreakdown } from '../lib/types';
-import { ShieldCheck, AlertTriangle, AlertOctagon, CheckCircle2, Timer } from 'lucide-react';
+import {
+  AccessibilityClassification,
+  AssessmentConfidence,
+  ScoreBreakdown,
+} from '../lib/types';
+import {
+  ShieldCheck,
+  AlertTriangle,
+  AlertOctagon,
+  CheckCircle2,
+  Timer,
+  Zap,
+  Globe2,
+} from 'lucide-react';
 
 interface ScoreCardProps {
   score: number;
   classification: AccessibilityClassification;
+  confidence: AssessmentConfidence;
+  scope: string;
   breakdown?: ScoreBreakdown;
   processingTimeMs: number;
+  inferenceTimeMs?: number | null;
 }
 
 export const ScoreCard: React.FC<ScoreCardProps> = ({
   score,
   classification,
+  confidence,
+  scope,
   breakdown,
   processingTimeMs,
+  inferenceTimeMs,
 }) => {
   const getTheme = () => {
     if (score >= 90) {
@@ -56,31 +74,32 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   const theme = getTheme();
   const Icon = theme.icon;
 
-  // SVG circular gauge calculation
   const radius = 64;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden space-y-6">
       {/* Decorative gradient glow */}
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
 
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs uppercase font-bold tracking-widest text-slate-400">
+      {/* Header bar */}
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 className="text-xs uppercase font-extrabold tracking-widest text-slate-400">
           Accessibility Assessment
         </h3>
-        <div className="flex items-center space-x-1.5 text-xs text-slate-400">
-          <Timer className="w-3.5 h-3.5 text-slate-500" />
-          <span>{processingTimeMs} ms</span>
+        <div className="flex items-center space-x-2 text-xs">
+          <span className="flex items-center space-x-1 text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+            <Zap className="w-3 h-3 text-cyan-400" />
+            <span>{inferenceTimeMs ? `${inferenceTimeMs}ms ML` : `${processingTimeMs}ms`}</span>
+          </span>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6 py-2">
-        {/* Circular Progress Gauge */}
+      {/* Score and Circular Radial Meter */}
+      <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
         <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
           <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
-            {/* Background ring */}
             <circle
               cx="80"
               cy="80"
@@ -90,7 +109,6 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
               className="text-slate-800"
               fill="transparent"
             />
-            {/* Value ring */}
             <circle
               cx="80"
               cy="80"
@@ -111,38 +129,51 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
           </div>
         </div>
 
-        {/* Classification & Summary */}
-        <div className="flex-1 text-center sm:text-left">
-          <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border mb-3 text-xs font-semibold uppercase tracking-wider backdrop-blur-sm shadow-sm"
-               style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }}>
-            <span className={`inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full border ${theme.badgeBg}`}>
-              <Icon className="w-3.5 h-3.5" />
+        {/* Classification, Confidence & Scope */}
+        <div className="flex-1 text-center sm:text-left space-y-2">
+          <div className="inline-flex items-center space-x-2">
+            <span className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${theme.badgeBg}`}>
+              <Icon className="w-4 h-4" />
               <span>{theme.label}</span>
             </span>
           </div>
 
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Deterministic scoring evaluated against structural step hazards, navigable pathway clearance, and mobility requirements.
-          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1 justify-center sm:justify-start">
+            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
+              Confidence: {confidence}
+            </span>
+            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 flex items-center space-x-1">
+              <Globe2 className="w-2.5 h-2.5 text-cyan-400" />
+              <span>{scope.replace(/_/g, ' ')}</span>
+            </span>
+          </div>
 
-          {/* Transparent Scoring Breakdown */}
-          {breakdown && breakdown.factors.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-800/80">
-              <span className="text-[11px] uppercase font-bold text-slate-500 tracking-wider block mb-2">
-                Scoring Rule Factors:
-              </span>
-              <ul className="space-y-1.5 text-xs text-slate-300">
-                {breakdown.factors.map((factor, idx) => (
-                  <li key={idx} className="flex items-center space-x-2">
-                    <span className={`w-1.5 h-1.5 rounded-full ${factor.startsWith('+') ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                    <span className="font-mono text-slate-300">{factor}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <p className="text-xs text-slate-400 leading-relaxed pt-1">
+            Deterministic evaluation against physical step barriers, pathway width clearance, and observable infrastructure.
+          </p>
         </div>
       </div>
+
+      {/* Transparent Scoring Factors */}
+      {breakdown && breakdown.factors.length > 0 && (
+        <div className="pt-3 border-t border-slate-800">
+          <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">
+            Evidence-Engine Factor Breakdown:
+          </span>
+          <ul className="space-y-1.5 text-xs">
+            {breakdown.factors.map((factor, idx) => (
+              <li key={idx} className="flex items-center space-x-2">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    factor.startsWith('+') ? 'bg-emerald-400' : 'bg-rose-400'
+                  }`}
+                />
+                <span className="font-mono text-slate-300">{factor}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

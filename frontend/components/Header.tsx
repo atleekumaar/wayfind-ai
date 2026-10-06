@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Compass, ShieldCheck, Activity, Cpu } from 'lucide-react';
+import { Compass, ShieldCheck, Cpu, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   backendConnected: boolean | null;
@@ -9,8 +9,9 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ backendConnected }) => {
   return (
-    <header className="border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md sticky top-0 z-50">
+    <header className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        {/* Brand identity */}
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 ring-1 ring-white/20">
             <Compass className="w-6 h-6 text-white" />
@@ -20,8 +21,8 @@ export const Header: React.FC<HeaderProps> = ({ backendConnected }) => {
               <span className="font-extrabold text-xl tracking-tight text-white">
                 WAYFIND <span className="text-cyan-400">AI</span>
               </span>
-              <span className="text-[10px] uppercase font-semibold tracking-wider px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-800/60">
-                Day 1 MVP
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
+                Evidence AI
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden sm:block">
@@ -30,7 +31,8 @@ export const Header: React.FC<HeaderProps> = ({ backendConnected }) => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        {/* Live system state & telemetry badges */}
+        <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 text-xs bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full">
             <span
               className={`w-2 h-2 rounded-full ${
@@ -43,16 +45,16 @@ export const Header: React.FC<HeaderProps> = ({ backendConnected }) => {
             />
             <span className="text-slate-300 font-medium">
               {backendConnected === true
-                ? 'CV Engine Online'
+                ? 'CV Engine Live'
                 : backendConnected === false
-                ? 'Backend Offline'
+                ? 'Offline'
                 : 'Connecting...'}
             </span>
           </div>
 
           <div className="hidden md:flex items-center space-x-1.5 text-xs text-slate-400 bg-slate-900/60 border border-slate-800/60 px-3 py-1.5 rounded-full">
             <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-            <span>YOLOv8 + Rules Engine</span>
+            <span>YOLOv8n + Deterministic Rules</span>
           </div>
         </div>
       </div>
