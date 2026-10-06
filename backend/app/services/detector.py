@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Set
 import numpy as np
 from PIL import Image
 
@@ -8,9 +8,29 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Categorization mapping for COCO and accessibility-related classes
+# Classes natively supported by general COCO models
+COCO_BARRIER_CLASSES: Set[str] = {
+    "chair", "bench", "potted plant", "suitcase", "backpack",
+    "fire hydrant", "trash can", "stop sign", "traffic light", "parking meter"
+}
+
+COCO_VEHICLE_CLASSES: Set[str] = {
+    "car", "truck", "bus", "motorcycle", "bicycle"
+}
+
+COCO_PEDESTRIAN_CLASSES: Set[str] = {
+    "person"
+}
+
+# Specialized domain features requiring fine-tuned datasets (NOT natively in standard COCO)
+SPECIALIZED_ACCESSIBILITY_FEATURES: Set[str] = {
+    "stairs", "stairway", "steps", "ramp", "wheelchair",
+    "tactile_paving", "curb_cut", "door_width", "slope"
+}
+
+# Semantic category mapping
 CLASS_CATEGORIES: Dict[str, str] = {
-    # Mobility barriers & obstacles
+    # Mobility barriers & obstacles in COCO
     "chair": "obstacle",
     "bench": "obstacle",
     "potted plant": "obstacle",
@@ -20,8 +40,9 @@ CLASS_CATEGORIES: Dict[str, str] = {
     "trash can": "obstacle",
     "stop sign": "traffic_fixture",
     "traffic light": "traffic_fixture",
+    "parking meter": "traffic_fixture",
     
-    # Vehicles that can block ramps / curb cuts / sidewalks
+    # Vehicles that can block pathways
     "car": "vehicle",
     "truck": "vehicle",
     "bus": "vehicle",
@@ -31,7 +52,7 @@ CLASS_CATEGORIES: Dict[str, str] = {
     # Pedestrians / crowd density
     "person": "pedestrian",
     
-    # Potential stairs or structural features (if detected by specialized models)
+    # Specialized domain classes (recognized only if a custom accessibility checkpoint is loaded)
     "stairs": "stair_hazard",
     "stairway": "stair_hazard",
     "steps": "stair_hazard",
@@ -39,8 +60,12 @@ CLASS_CATEGORIES: Dict[str, str] = {
     "wheelchair": "mobility_aid",
 }
 
+
 class Detector:
-    """Computer vision object detection service wrapping YOLOv8."""
+    """
+    Computer vision object detection service wrapping Ultralytics YOLOv8n.
+    Clearly distinguishes native COCO classes from specialized accessibility features.
+    """
 
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path or settings.MODEL_PATH
@@ -48,7 +73,7 @@ class Detector:
         self._load_model()
 
     def _load_model(self) -> None:
-        """Loads the Ultralytics YOLO model."""
+        """Loads the Ultralytics YOLO model checkpoint."""
         try:
             from ultralytics import YOLO
             logger.info("Loading YOLO detection model from %s...", self.model_path)
@@ -63,15 +88,20 @@ class Detector:
         return self.model is not None
 
     def get_supported_classes(self) -> List[str]:
-        """Returns the list of classes known to the active model."""
+        """Returns the list of classes supported by the active model."""
         if self.model is not None and hasattr(self.model, "names"):
             return list(self.model.names.values())
         return []
+
+    def is_specialized_feature(self, class_name: str) -> bool:
+        """Checks if a feature is a specialized domain concept rather than standard COCO."""
+        return class_name.lower() in SPECIALIZED_ACCESSIBILITY_FEATURES
 
     def detect(self, image: Image.Image, conf_threshold: Optional[float] = None) -> List[Detection]:
         """
         Runs object detection on the provided PIL image.
         Returns a list of structured Detection items with normalized/absolute coordinates.
+        Does NOT fabricate detections for unsupported specialized concepts.
         """
         if self.model is None:
             logger.warning("Detector model is not initialized; returning empty detections.")
@@ -80,13 +110,10 @@ class Detector:
         conf = conf_threshold if conf_threshold is not None else settings.DEFAULT_CONFIDENCE
         
         try:
-            # Ensure image is in RGB format
             if image.mode != "RGB":
                 image = image.convert("RGB")
 
-            # Run inference (YOLO accepts PIL images directly)
             results = self.model(image, conf=conf, verbose=False)
-            
             detections: List[Detection] = []
             
             if not results or len(results) == 0:
@@ -99,7 +126,6 @@ class Detector:
                 return detections
 
             for box in boxes:
-                # Extract coordinates [x1, y1, x2, y2]
                 xyxy = box.xyxy[0].tolist()
                 confidence = float(box.conf[0])
                 cls_id = int(box.cls[0])
