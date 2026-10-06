@@ -16,6 +16,8 @@ import {
   Globe2,
   Calculator,
   UserCheck,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 import { ScoreAuditModal } from './ScoreAuditModal';
 
@@ -101,17 +103,17 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   const theme = getTheme();
   const Icon = theme.icon;
 
-  const radius = 56;
+  const radius = 54;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden space-y-5">
+    <div className="w-full h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between space-y-4">
       {/* Decorative gradient glow */}
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
 
       {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3.5">
         <div className="flex items-center space-x-2">
           <h3 className="text-xs uppercase font-extrabold tracking-widest text-slate-300">
             Accessibility Assessment
@@ -129,8 +131,9 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
         </div>
       </div>
 
-      {/* Score and Circular Radial Meter */}
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+      {/* Score and Circular Radial Meter Section */}
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 py-1">
+        {/* Radial Meter */}
         <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
           <svg className="w-full h-full transform -rotate-90" viewBox="0 0 140 140">
             <circle
@@ -162,7 +165,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
           </div>
         </div>
 
-        {/* Classification, Dual Confidence & Scope */}
+        {/* Classification, Dual Confidence & Action */}
         <div className="flex-1 min-w-0 text-center sm:text-left space-y-2.5">
           <div className="inline-flex items-center">
             <span className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${theme.badgeBg}`}>
@@ -171,7 +174,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             </span>
           </div>
 
-          {/* Dual Confidence Display */}
+          {/* Dual Confidence Badges */}
           <div className="flex flex-wrap items-center gap-1.5 justify-center sm:justify-start">
             <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getConfidenceBadge()}`}>
               {confidence} Confidence
@@ -193,7 +196,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             Deterministic evaluation against physical corridor barriers and mobility criteria.
           </p>
 
-          {/* "Why this score?" Trigger Button */}
+          {/* "Why this score?" Button */}
           <div className="pt-0.5">
             <button
               onClick={() => setIsAuditOpen(true)}
@@ -206,13 +209,21 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
         </div>
       </div>
 
-      {/* Transparent Scoring Factors */}
-      {breakdown && breakdown.factors.length > 0 && (
-        <div className="pt-3 border-t border-slate-800">
-          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-2">
+      {/* Applied Factors / Deductions Footer */}
+      <div className="space-y-2 pt-2 border-t border-slate-800/80">
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
             Applied Factor Adjustments:
           </span>
-          <ul className="space-y-1.5 text-xs">
+          {breakdown && (
+            <span className="text-[10px] font-mono text-cyan-400">
+              Base 100 {score - 100 >= 0 ? `+${score - 100}` : score - 100} = {score}
+            </span>
+          )}
+        </div>
+
+        {breakdown && breakdown.factors.length > 0 ? (
+          <ul className="space-y-1.5 text-xs max-h-[76px] overflow-y-auto">
             {breakdown.factors.map((factor, idx) => (
               <li key={idx} className="flex items-center space-x-2">
                 <span
@@ -224,8 +235,10 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        ) : (
+          <p className="text-xs text-slate-500 italic">No barrier adjustments applied to baseline score.</p>
+        )}
+      </div>
 
       {/* Audit Modal */}
       {breakdown && (

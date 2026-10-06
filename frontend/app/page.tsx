@@ -307,10 +307,9 @@ export default function Home() {
               </div>
             )}
 
-            {/* Row 1: Visual Perception (left) + Accessibility Scorecard (right) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Visual Scene Perception (7 cols) */}
-              <div className="lg:col-span-7 h-full">
+            {/* Row 1: Symmetrical 50/50 Split — Visual Perception & Accessibility Scorecard */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+              <div className="w-full h-full flex flex-col">
                 <VisualComparison
                   originalImageUrl={activePreviewUrl}
                   annotatedImageUrl={analysisResult.annotated_image}
@@ -318,8 +317,7 @@ export default function Home() {
                 />
               </div>
 
-              {/* Right Column: Scorecard with Breakdown (5 cols) */}
-              <div className="lg:col-span-5 h-full">
+              <div className="w-full h-full flex flex-col">
                 <ScoreCard
                   score={analysisResult.accessibility_score}
                   classification={analysisResult.classification}
@@ -334,10 +332,14 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Row 2: Barriers & Recommendations (Equal 2 columns across 12 cols) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-              <RiskList risks={analysisResult.risks} />
-              <RecommendationList recommendations={analysisResult.recommendations} />
+            {/* Row 2: Symmetrical 50/50 Split — Barriers & Recommendations */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+              <div className="w-full h-full flex flex-col">
+                <RiskList risks={analysisResult.risks} />
+              </div>
+              <div className="w-full h-full flex flex-col">
+                <RecommendationList recommendations={analysisResult.recommendations} />
+              </div>
             </div>
 
             {/* Row 3: Verified Knowledge vs Unknown Reality Panel (Full Width 12 cols) */}
