@@ -1,12 +1,15 @@
 from .analysis import (
     Detection,
+    SpatialAssessment,
     Evidence,
     EvidenceStatus,
     EvidenceSource,
     Risk,
     Recommendation,
     ScoreBreakdown,
+    ScoreBreakdownFactor,
     AnalysisResponse,
+    MultiViewAnalysisResponse,
     FULLY_ACCESSIBLE,
     MOSTLY_ACCESSIBLE,
     PARTIALLY_ACCESSIBLE,
@@ -15,17 +18,21 @@ from .analysis import (
     RiskSeverity,
     RecommendationPriority,
     AssessmentConfidence,
+    AccessibilityProfile,
 )
 
 __all__ = [
     "Detection",
+    "SpatialAssessment",
     "Evidence",
     "EvidenceStatus",
     "EvidenceSource",
     "Risk",
     "Recommendation",
     "ScoreBreakdown",
+    "ScoreBreakdownFactor",
     "AnalysisResponse",
+    "MultiViewAnalysisResponse",
     "FULLY_ACCESSIBLE",
     "MOSTLY_ACCESSIBLE",
     "PARTIALLY_ACCESSIBLE",
@@ -34,4 +41,5 @@ __all__ = [
     "RiskSeverity",
     "RecommendationPriority",
     "AssessmentConfidence",
+    "AccessibilityProfile",
 ]

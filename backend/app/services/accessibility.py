@@ -3,17 +3,21 @@ from typing import List, Dict, Tuple, Any, Optional
 
 from app.schemas.analysis import (
     Detection,
+    SpatialAssessment,
     Evidence,
     Risk,
     Recommendation,
     ScoreBreakdown,
+    ScoreBreakdownFactor,
     FULLY_ACCESSIBLE,
     MOSTLY_ACCESSIBLE,
     PARTIALLY_ACCESSIBLE,
     LIMITED_ACCESSIBILITY,
     AccessibilityClassification,
     AssessmentConfidence,
+    AccessibilityProfile,
 )
+from app.services.spatial_reasoning import SpatialReasoner
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +26,71 @@ THRESHOLD_FULLY_ACCESSIBLE = 90
 THRESHOLD_MOSTLY_ACCESSIBLE = 70
 THRESHOLD_PARTIALLY_ACCESSIBLE = 40
 
-# Evidence-Aware Penalty and Reward Constants
-PENALTY_STAIRS = 25
-PENALTY_OBSTACLE = 10
-PENALTY_VEHICLE = 15
-PENALTY_CROWD = 5
-REWARD_RAMP = 15
-REWARD_CLEAR_PATH = 10
+# Profile-based weightings matrix (Deterministic penalties and rewards)
+PROFILE_WEIGHTS: Dict[AccessibilityProfile, Dict[str, int]] = {
+    "general_mobility": {
+        "stairs": 25,
+        "obstacle_corridor": 10,
+        "obstacle_boundary": 5,
+        "vehicle_corridor": 15,
+        "vehicle_boundary": 8,
+        "crowd": 5,
+        "ramp_reward": 15,
+        "clear_reward": 10,
+    },
+    "wheelchair": {
+        "stairs": 35,
+        "obstacle_corridor": 15,
+        "obstacle_boundary": 8,
+        "vehicle_corridor": 20,
+        "vehicle_boundary": 10,
+        "crowd": 5,
+        "ramp_reward": 20,
+        "clear_reward": 10,
+    },
+    "walker": {
+        "stairs": 30,
+        "obstacle_corridor": 12,
+        "obstacle_boundary": 6,
+        "vehicle_corridor": 15,
+        "vehicle_boundary": 8,
+        "crowd": 5,
+        "ramp_reward": 15,
+        "clear_reward": 10,
+    },
+    "stroller": {
+        "stairs": 30,
+        "obstacle_corridor": 10,
+        "obstacle_boundary": 5,
+        "vehicle_corridor": 15,
+        "vehicle_boundary": 8,
+        "crowd": 5,
+        "ramp_reward": 15,
+        "clear_reward": 10,
+    },
+    "low_vision": {
+        "stairs": 25,
+        "obstacle_corridor": 20,
+        "obstacle_boundary": 10,
+        "vehicle_corridor": 15,
+        "vehicle_boundary": 8,
+        "crowd": 5,
+        "ramp_reward": 10,
+        "clear_reward": 10,
+    },
+}
 
-# Maximum cumulative caps
+# Maximum cumulative penalty caps per category
 MAX_STAIRS_PENALTY = 50
-MAX_OBSTACLE_PENALTY = 30
+MAX_OBSTACLE_PENALTY = 35
 MAX_VEHICLE_PENALTY = 30
 
 
 class AccessibilityEngine:
     """
-    Evidence-aware deterministic accessibility rules and scoring engine.
-    Computes an accessibility score (0-100), evaluates verification confidence,
-    separates observed evidence from unknowns, and generates responsible recommendations.
+    Spatial-aware and Profile-aware deterministic accessibility rules engine.
+    Calculates 0-100 score, evaluates spatial navigation relevance, separates evidence,
+    and produces grounded explanations without relying on LLMs for calculations.
     """
 
     @classmethod
@@ -60,65 +110,101 @@ class AccessibilityEngine:
         cls,
         detections: List[Detection],
         image_dimensions: Optional[Tuple[int, int]] = None,
+        profile: AccessibilityProfile = "general_mobility",
     ) -> Dict[str, Any]:
         """
-        Evaluates detected visual entities with evidence-aware rules.
-        Does NOT penalize for unobserved features (absence of evidence is not evidence of absence).
+        Evaluates detected visual entities using spatial barrier localization
+        and profile-aware weighting.
         """
+        weights = PROFILE_WEIGHTS.get(profile, PROFILE_WEIGHTS["general_mobility"])
         base_score = 100
         penalties = 0
         rewards = 0
         factors: List[str] = []
+        detailed_factors: List[ScoreBreakdownFactor] = []
         risks: List[Risk] = []
         recommendations: List[Recommendation] = []
         evidence_list: List[Evidence] = []
         uncertainties: List[str] = []
 
-        # Count detected items
-        stairs_instances: List[Detection] = []
-        obstacle_instances: List[Detection] = []
-        vehicle_instances: List[Detection] = []
+        # 1. Run Spatial Barrier Localization
+        spatial_assessments = SpatialReasoner.evaluate(detections, image_dimensions)
+
+        # Map spatial assessments to detections for fast lookup
+        spatial_by_index: Dict[int, SpatialAssessment] = {
+            i: spatial_assessments[i] for i in range(len(spatial_assessments))
+        }
+
+        # Segregate detected objects
+        stairs_instances: List[Tuple[Detection, SpatialAssessment]] = []
+        obstacle_corridor: List[Tuple[Detection, SpatialAssessment]] = []
+        obstacle_boundary: List[Tuple[Detection, SpatialAssessment]] = []
+        obstacle_contextual: List[Tuple[Detection, SpatialAssessment]] = []
+        vehicle_corridor: List[Tuple[Detection, SpatialAssessment]] = []
+        vehicle_boundary: List[Tuple[Detection, SpatialAssessment]] = []
+        vehicle_contextual: List[Tuple[Detection, SpatialAssessment]] = []
         pedestrian_instances: List[Detection] = []
         ramp_instances: List[Detection] = []
 
-        for d in detections:
+        for idx, d in enumerate(detections):
             cname = d.class_name.lower()
             cat = d.category
+            sp = spatial_by_index.get(idx)
 
             if cat == "stair_hazard" or "stair" in cname or "step" in cname:
-                stairs_instances.append(d)
+                stairs_instances.append((d, sp))
             elif cat == "accessible_feature" or "ramp" in cname:
                 ramp_instances.append(d)
-            elif cat == "vehicle":
-                vehicle_instances.append(d)
             elif cat == "pedestrian":
                 pedestrian_instances.append(d)
+            elif cat == "vehicle":
+                if sp and sp.navigation_relevance == "corridor_obstruction":
+                    vehicle_corridor.append((d, sp))
+                elif sp and sp.navigation_relevance == "pathway_restriction":
+                    vehicle_boundary.append((d, sp))
+                else:
+                    vehicle_contextual.append((d, sp))
             elif cat == "obstacle":
-                obstacle_instances.append(d)
+                if sp and sp.navigation_relevance == "corridor_obstruction":
+                    obstacle_corridor.append((d, sp))
+                elif sp and sp.navigation_relevance == "pathway_restriction":
+                    obstacle_boundary.append((d, sp))
+                else:
+                    obstacle_contextual.append((d, sp))
 
         # -------------------------------------------------------------
-        # 1. POSITIVE BARRIER EVIDENCE: STAIRS
+        # 1. STAIRS EVALUATION
         # -------------------------------------------------------------
         if stairs_instances:
-            stair_count = len(stairs_instances)
-            avg_conf = sum(s.confidence for s in stairs_instances) / stair_count
-            applied_penalty = min(stair_count * PENALTY_STAIRS, MAX_STAIRS_PENALTY)
-            penalties += applied_penalty
-            factors.append(f"-{applied_penalty} pts: {stair_count} stair barrier instance(s) detected")
-
+            count = len(stairs_instances)
+            avg_conf = sum(s[0].confidence for s in stairs_instances) / count
+            pts = min(count * weights["stairs"], MAX_STAIRS_PENALTY)
+            penalties += pts
+            factor_desc = f"-{pts} pts: {count} stair barrier instance(s) detected [{profile.replace('_', ' ').title()}]"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=-pts,
+                    category="stairs",
+                    status="detected",
+                    source="object_detection",
+                    confidence=round(avg_conf, 2),
+                )
+            )
             evidence_list.append(
                 Evidence(
                     feature="Stairs / Steps",
                     status="detected",
                     source="object_detection",
                     confidence=round(avg_conf, 2),
-                    description=f"{stair_count} instance(s) of stairs observed in visible path.",
+                    description=f"{count} stair instance(s) observed in the physical environment.",
                 )
             )
             risks.append(
                 Risk(
                     type="STAIRS_BARRIER",
-                    severity="HIGH",
+                    severity="CRITICAL" if profile in ["wheelchair", "stroller"] else "HIGH",
                     description=(
                         "Stairs were detected near the visible pathway and may present a significant "
                         "barrier for wheelchair users, strollers, and persons with mobility limitations."
@@ -143,85 +229,188 @@ class AccessibilityEngine:
             )
 
         # -------------------------------------------------------------
-        # 2. POSITIVE BARRIER EVIDENCE: OBSTACLES
+        # 2. SPATIAL OBSTACLE EVALUATION
         # -------------------------------------------------------------
-        if obstacle_instances:
-            obs_count = len(obstacle_instances)
-            obs_names = sorted(list({o.class_name for o in obstacle_instances}))
-            avg_conf = sum(o.confidence for o in obstacle_instances) / obs_count
-            applied_penalty = min(obs_count * PENALTY_OBSTACLE, MAX_OBSTACLE_PENALTY)
-            penalties += applied_penalty
-            obs_str = ", ".join(obs_names)
-            factors.append(f"-{applied_penalty} pts: Pathway obstacle(s) detected ({obs_str})")
-
+        # 2A. Direct Corridor Obstructions
+        if obstacle_corridor:
+            count = len(obstacle_corridor)
+            names = sorted(list({o[0].class_name for o in obstacle_corridor}))
+            avg_conf = sum(o[0].confidence for o in obstacle_corridor) / count
+            pts = min(count * weights["obstacle_corridor"], MAX_OBSTACLE_PENALTY)
+            penalties += pts
+            name_str = ", ".join(names)
+            factor_desc = f"-{pts} pts: {count} obstacle(s) inside pedestrian corridor ({name_str})"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=-pts,
+                    category="obstacle",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=round(avg_conf, 2),
+                )
+            )
             evidence_list.append(
                 Evidence(
                     feature="Pathway Obstacles",
                     status="detected",
-                    source="object_detection",
+                    source="spatial_corridor_analysis",
                     confidence=round(avg_conf, 2),
-                    description=f"Objects detected in visible scene ({obs_str}).",
+                    description=f"Obstacles ({name_str}) directly intersecting inferred pedestrian corridor.",
                 )
             )
             risks.append(
                 Risk(
                     type="PATHWAY_OBSTACLE",
-                    severity="MEDIUM",
-                    description=f"Potential pathway obstruction detected ({obs_str}). May restrict clear passage width.",
+                    severity="HIGH" if profile in ["wheelchair", "low_vision"] else "MEDIUM",
+                    description=f"Pathway obstruction detected ({name_str}) within likely pedestrian travel line.",
                 )
             )
             recommendations.append(
                 Recommendation(
                     priority="MEDIUM",
-                    text=f"Inspect pathway around detected items ({obs_str}) for sufficient navigation clearance.",
+                    text=f"Inspect pathway around detected items ({name_str}) for sufficient navigation clearance.",
                 )
             )
-        else:
+
+        # 2B. Boundary Corridor Restrictions
+        if obstacle_boundary:
+            count = len(obstacle_boundary)
+            names = sorted(list({o[0].class_name for o in obstacle_boundary}))
+            pts = min(count * weights["obstacle_boundary"], 15)
+            penalties += pts
+            name_str = ", ".join(names)
+            factor_desc = f"-{pts} pts: Boundary obstruction near pathway edge ({name_str})"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=-pts,
+                    category="obstacle",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=0.8,
+                )
+            )
+            risks.append(
+                Risk(
+                    type="BOUNDARY_OBSTACLE",
+                    severity="LOW",
+                    description=f"Object ({name_str}) near corridor edge; may narrow navigable passage width.",
+                )
+            )
+
+        # 2C. Contextual Objects Outside Corridor (NO PENALTY!)
+        if obstacle_contextual:
+            count = len(obstacle_contextual)
+            names = sorted(list({o[0].class_name for o in obstacle_contextual}))
+            name_str = ", ".join(names)
+            factor_desc = f"0 pts: {count} contextual object(s) detected outside corridor ({name_str})"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=0,
+                    category="obstacle",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=0.9,
+                )
+            )
+            evidence_list.append(
+                Evidence(
+                    feature="Contextual Surrounding Objects",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=0.9,
+                    description=f"Objects ({name_str}) detected outside the inferred pedestrian path (no penalty).",
+                )
+            )
+
+        if not obstacle_corridor and not obstacle_boundary and not obstacle_contextual:
             evidence_list.append(
                 Evidence(
                     feature="Pathway Obstacles",
                     status="not_detected",
                     source="object_detection",
                     confidence=None,
-                    description="No major physical obstacles detected in the visible pathway.",
+                    description="No physical obstacles detected in the visible pathway.",
                 )
             )
 
         # -------------------------------------------------------------
-        # 3. POSITIVE BARRIER EVIDENCE: VEHICLES
+        # 3. SPATIAL VEHICLE EVALUATION
         # -------------------------------------------------------------
-        if vehicle_instances:
-            veh_count = len(vehicle_instances)
-            veh_names = sorted(list({v.class_name for v in vehicle_instances}))
-            avg_conf = sum(v.confidence for v in vehicle_instances) / veh_count
-            applied_penalty = min(veh_count * PENALTY_VEHICLE, MAX_VEHICLE_PENALTY)
-            penalties += applied_penalty
-            veh_str = ", ".join(veh_names)
-            factors.append(f"-{applied_penalty} pts: Vehicle(s) detected near path ({veh_str})")
-
+        if vehicle_corridor:
+            count = len(vehicle_corridor)
+            names = sorted(list({v[0].class_name for v in vehicle_corridor}))
+            pts = min(count * weights["vehicle_corridor"], MAX_VEHICLE_PENALTY)
+            penalties += pts
+            name_str = ", ".join(names)
+            factor_desc = f"-{pts} pts: Vehicle in pedestrian corridor ({name_str})"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=-pts,
+                    category="vehicle",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=0.88,
+                )
+            )
             evidence_list.append(
                 Evidence(
-                    feature="Vehicles Near Pathway",
+                    feature="Vehicles in Pathway",
                     status="detected",
-                    source="object_detection",
-                    confidence=round(avg_conf, 2),
-                    description=f"Vehicles ({veh_str}) observed in vicinity of pedestrian access.",
+                    source="spatial_corridor_analysis",
+                    confidence=0.88,
+                    description=f"Vehicle ({name_str}) directly positioned in pedestrian access zone.",
                 )
             )
             risks.append(
                 Risk(
-                    type="VEHICLE_PROXIMITY",
-                    severity="MEDIUM",
-                    description=(
-                        f"Vehicle ({veh_str}) detected in the scene. "
-                        "Verify that drop-off zones or curb transitions are not obstructed."
-                    ),
+                    type="VEHICLE_IN_PATH",
+                    severity="HIGH",
+                    description=f"Vehicle ({name_str}) intersecting likely pedestrian route. Drop-off or curb cut blocked.",
                 )
             )
             recommendations.append(
                 Recommendation(
-                    priority="LOW",
-                    text="Exercise caution around vehicular areas and confirm drop-off zone or curb cut is clear.",
+                    priority="HIGH" if profile == "wheelchair" else "MEDIUM",
+                    text="Exercise extreme caution around vehicles blocking access corridors.",
+                )
+            )
+        elif vehicle_boundary:
+            count = len(vehicle_boundary)
+            pts = min(count * weights["vehicle_boundary"], 15)
+            penalties += pts
+            factor_desc = f"-{pts} pts: Vehicle parked along pathway perimeter"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=-pts,
+                    category="vehicle",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=0.85,
+                )
+            )
+        elif vehicle_contextual:
+            # Vehicles on street/roadway far from pedestrian path = NO PENALTY!
+            count = len(vehicle_contextual)
+            factor_desc = f"0 pts: {count} vehicle(s) on distant roadway / outside pedestrian path"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=0,
+                    category="vehicle",
+                    status="detected",
+                    source="spatial_corridor_analysis",
+                    confidence=0.9,
                 )
             )
 
@@ -230,22 +419,25 @@ class AccessibilityEngine:
         # -------------------------------------------------------------
         person_count = len(pedestrian_instances)
         if person_count > 4:
-            penalties += PENALTY_CROWD
-            factors.append(f"-{PENALTY_CROWD} pts: High pedestrian density ({person_count} persons detected)")
-            evidence_list.append(
-                Evidence(
-                    feature="Crowd Congestion",
+            pts = weights["crowd"]
+            penalties += pts
+            factor_desc = f"-{pts} pts: Pedestrian congestion ({person_count} persons observed)"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=-pts,
+                    category="pedestrian",
                     status="detected",
                     source="object_detection",
                     confidence=0.85,
-                    description=f"Pedestrian volume ({person_count} persons) may reduce navigation speed.",
                 )
             )
             risks.append(
                 Risk(
                     type="HIGH_PEDESTRIAN_DENSITY",
                     severity="LOW",
-                    description="High pedestrian volume may restrict comfortable wheelchair or mobility device transit.",
+                    description=f"Crowd volume ({person_count} persons) may reduce travel velocity and mobility maneuvering.",
                 )
             )
 
@@ -253,15 +445,27 @@ class AccessibilityEngine:
         # 5. POSITIVE ACCESSIBLE FEATURE: RAMP
         # -------------------------------------------------------------
         if ramp_instances:
-            rewards += REWARD_RAMP
-            factors.append(f"+{REWARD_RAMP} pts: Accessible ramp positively identified")
+            pts = weights["ramp_reward"]
+            rewards += pts
+            factor_desc = f"+{pts} pts: Accessible ramp identified in visible frame"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=pts,
+                    category="ramp",
+                    status="detected",
+                    source="object_detection",
+                    confidence=0.90,
+                )
+            )
             evidence_list.append(
                 Evidence(
                     feature="Accessible Ramp",
                     status="detected",
                     source="object_detection",
                     confidence=0.90,
-                    description="Step-free ramp transition positively identified in the visible frame.",
+                    description="Step-free ramp transition positively identified in the visual field.",
                 )
             )
             recommendations.append(
@@ -271,7 +475,7 @@ class AccessibilityEngine:
                 )
             )
         else:
-            # RESPONSIBLE AI RULE: No penalty for unobserved ramp!
+            # RESPONSIBLE AI RULE: Unseen ramp = 0 penalty!
             evidence_list.append(
                 Evidence(
                     feature="Accessible Ramp",
@@ -311,16 +515,28 @@ class AccessibilityEngine:
         # -------------------------------------------------------------
         # 7. INFERRED CLEAR PATHWAY
         # -------------------------------------------------------------
-        if not stairs_instances and not obstacle_instances and not vehicle_instances:
-            rewards += REWARD_CLEAR_PATH
-            factors.append(f"+{REWARD_CLEAR_PATH} pts: No immediate physical barriers detected in visual field")
+        if not stairs_instances and not obstacle_corridor and not vehicle_corridor:
+            pts = weights["clear_reward"]
+            rewards += pts
+            factor_desc = f"+{pts} pts: Inferred clear navigation corridor in visible field"
+            factors.append(factor_desc)
+            detailed_factors.append(
+                ScoreBreakdownFactor(
+                    factor=factor_desc,
+                    points=pts,
+                    category="path",
+                    status="inferred",
+                    source="spatial_corridor_analysis",
+                    confidence=0.85,
+                )
+            )
             evidence_list.append(
                 Evidence(
                     feature="Clear Navigable Pathway",
                     status="inferred",
-                    source="rule_engine",
-                    confidence=0.80,
-                    description="Pathway appears free of major step barriers or ground obstructions in visible area.",
+                    source="spatial_corridor_analysis",
+                    confidence=0.85,
+                    description="Pathway appears free of major step barriers or corridor-blocking obstructions in visible area.",
                 )
             )
             recommendations.append(
@@ -330,19 +546,25 @@ class AccessibilityEngine:
                 )
             )
 
-        # Bounded score calculation
+        # -------------------------------------------------------------
+        # 8. BOUNDED SCORE CALCULATION
+        # -------------------------------------------------------------
         raw_score = base_score - penalties + rewards
         final_score = max(0, min(100, raw_score))
         classification = cls.get_classification(final_score)
 
         # -------------------------------------------------------------
-        # 8. ASSESSMENT CONFIDENCE CALCULATION
+        # 9. DUAL CONFIDENCE CALCULATION
         # -------------------------------------------------------------
-        # High confidence if significant visual features were detected or clear field confirmed
-        total_detections = len(detections)
-        if total_detections >= 3 or stairs_instances:
+        # A. Vision Confidence: average detection confidence
+        pos_confs = [d.confidence for d in detections if d.confidence > 0]
+        vision_confidence = round(sum(pos_confs) / len(pos_confs), 2) if pos_confs else None
+
+        # B. Assessment Confidence: depends on visual coverage & spatial relevance
+        total_relevant = len(stairs_instances) + len(obstacle_corridor) + len(vehicle_corridor)
+        if total_relevant >= 2 or stairs_instances:
             assessment_confidence: AssessmentConfidence = "HIGH"
-        elif total_detections >= 1 or not stairs_instances:
+        elif len(detections) >= 1 or not stairs_instances:
             assessment_confidence = "MEDIUM"
         else:
             assessment_confidence = "LOW"
@@ -353,8 +575,17 @@ class AccessibilityEngine:
             classification,
             len(stairs_instances),
             len(ramp_instances),
-            len(obstacle_instances),
+            len(obstacle_corridor),
             assessment_confidence,
+            profile,
+        )
+
+        speech_summary = cls._generate_speech_summary(
+            final_score,
+            classification,
+            len(stairs_instances),
+            len(obstacle_corridor),
+            profile,
         )
 
         breakdown = ScoreBreakdown(
@@ -362,18 +593,23 @@ class AccessibilityEngine:
             penalties=penalties,
             rewards=rewards,
             factors=factors,
+            detailed_factors=detailed_factors,
         )
 
         return {
             "score": final_score,
             "classification": classification,
             "assessment_confidence": assessment_confidence,
+            "vision_confidence": vision_confidence,
             "assessment_scope": "visible_area_only",
+            "profile": profile,
+            "spatial_assessments": spatial_assessments,
             "evidence": evidence_list,
             "risks": risks,
             "recommendations": recommendations,
             "uncertainties": uncertainties,
             "summary": summary,
+            "speech_summary": speech_summary,
             "breakdown": breakdown,
         }
 
@@ -385,6 +621,7 @@ class AccessibilityEngine:
         ramps_count: int,
         obstacles_count: int,
         confidence: AssessmentConfidence,
+        profile: AccessibilityProfile,
     ) -> str:
         """Constructs an evidence-qualified summary of physical accessibility."""
         labels = {
@@ -394,21 +631,49 @@ class AccessibilityEngine:
             LIMITED_ACCESSIBILITY: "Limited Accessibility",
         }
         human_class = labels.get(classification, classification)
+        prof_name = profile.replace("_", " ").title()
 
         if stairs_count > 0:
             return (
-                f"Evaluated as {human_class} ({score}/100, {confidence} confidence). "
-                f"Stairs were detected near the visible pathway and may present a mobility barrier. "
+                f"Evaluated as {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
+                f"Stairs were detected near the visible pathway and may present a significant mobility barrier. "
                 "Ramp availability cannot be determined from this single viewpoint."
             )
         elif obstacles_count > 0:
             return (
-                f"Evaluated as {human_class} ({score}/100, {confidence} confidence). "
-                "No step barriers detected, but potential pathway obstacles may reduce navigable clearance for mobility devices."
+                f"Evaluated as {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
+                "Step-free path observed, but obstacles intersecting the inferred pedestrian corridor reduce navigable width."
             )
         else:
             return (
-                f"Evaluated as {human_class} ({score}/100, {confidence} confidence). "
-                "No major visual barriers were detected in the analyzed area. "
+                f"Evaluated as {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
+                "No major visual barriers were detected in the analyzed corridor. "
                 "Visual analysis is limited to the camera field of view."
+            )
+
+    @staticmethod
+    def _generate_speech_summary(
+        score: int,
+        classification: AccessibilityClassification,
+        stairs_count: int,
+        obstacles_count: int,
+        profile: AccessibilityProfile,
+    ) -> str:
+        """Constructs a concise, spoken text summary for browser speech synthesis."""
+        tier = classification.replace("_", " ").title()
+        prof = profile.replace("_", " ").title()
+        if stairs_count > 0:
+            return (
+                f"Accessibility score {score} out of 100, {tier} for {prof}. "
+                "Stairs were detected near the visible route. A step-free ramp could not be verified."
+            )
+        elif obstacles_count > 0:
+            return (
+                f"Accessibility score {score} out of 100, {tier} for {prof}. "
+                "Potential pathway obstruction detected along the pedestrian corridor."
+            )
+        else:
+            return (
+                f"Accessibility score {score} out of 100, {tier} for {prof}. "
+                "No major physical step barriers detected in the visible camera perspective."
             )
