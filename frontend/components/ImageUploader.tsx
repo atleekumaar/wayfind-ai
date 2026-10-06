@@ -158,7 +158,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
           {profiles.map((p) => {
             const isActive = selectedProfile === p.id;
             return (
@@ -167,14 +167,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
                 type="button"
                 onClick={() => onProfileChange(p.id)}
                 disabled={isAnalyzing}
-                className={`p-2.5 rounded-xl text-left border transition-all ${
+                className={`p-3 rounded-xl text-left border transition-all ${
                   isActive
-                    ? 'bg-cyan-950/70 border-cyan-600 text-cyan-200 shadow-sm ring-1 ring-cyan-500/30'
+                    ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md ring-1 ring-cyan-500/40'
                     : 'bg-slate-950 hover:bg-slate-800/80 border-slate-800 text-slate-400'
                 }`}
               >
-                <div className="text-xs font-bold leading-tight">{p.label}</div>
-                <div className="text-[10px] text-slate-500 mt-1 line-clamp-1 leading-snug">{p.desc}</div>
+                <div className="text-xs font-bold leading-tight truncate">{p.label}</div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-snug line-clamp-2">{p.desc}</div>
               </button>
             );
           })}

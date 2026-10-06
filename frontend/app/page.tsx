@@ -8,7 +8,6 @@ import { VisualComparison } from '../components/VisualComparison';
 import { EvidenceSection } from '../components/EvidenceSection';
 import { RiskList } from '../components/RiskList';
 import { RecommendationList } from '../components/RecommendationList';
-import { DetectionTags } from '../components/DetectionTags';
 import { TechnicalDetailsModal } from '../components/TechnicalDetailsModal';
 import { VoiceSummaryButton } from '../components/VoiceSummaryButton';
 import { checkBackendHealth, analyzeImage, analyzeMultiView } from '../lib/api';
@@ -18,16 +17,9 @@ import {
   AlertCircle,
   RefreshCw,
   Layers,
-  CheckCircle2,
   ShieldCheck,
   Sparkles,
-  ArrowRight,
-  Eye,
-  Sliders,
   PlayCircle,
-  HelpCircle,
-  ShieldAlert,
-  Volume2,
 } from 'lucide-react';
 
 export default function Home() {
@@ -44,6 +36,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const uploaderRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   // Periodic health check
   useEffect(() => {
@@ -128,6 +121,11 @@ export default function Home() {
         result = await analyzeImage(selectedFiles[0], confidenceThreshold, selectedProfile);
       }
       setAnalysisResult(result);
+
+      // Smooth scroll to results
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } catch (err: any) {
       setError(
         err.message || 'Failed to analyze environment. Please verify the backend service is running.'
@@ -246,39 +244,39 @@ export default function Home() {
 
         {/* Results Dashboard */}
         {analysisResult && activePreviewUrl && (
-          <section className="space-y-6 animate-in fade-in duration-500">
+          <section ref={resultsRef} className="space-y-8 animate-in fade-in duration-500 pt-2">
             {/* Top Insight & Wayfinding Summary Banner with Audio Narration */}
-            <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-start space-x-3.5">
+            <div className="w-full p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              <div className="flex items-start space-x-4 min-w-0 flex-1">
                 <div className="p-2.5 rounded-xl bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 shrink-0 mt-0.5">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-xs font-bold text-white uppercase tracking-wider">
                       Executive Spatial Assessment
                     </h2>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
+                    <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
                       Scope: {analysisResult.assessment_scope.replace(/_/g, ' ')}
                     </span>
                     {selectedFiles.length > 1 && (
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                        Multi-View Aggregated ({selectedFiles.length} Angles)
+                      <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                        Multi-View ({selectedFiles.length} Angles)
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed max-w-4xl">
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed break-words">
                     {analysisResult.summary}
                   </p>
                 </div>
               </div>
 
               {/* Action area: Spoken Assessment Audio & ID badge */}
-              <div className="shrink-0 flex items-center space-x-3 self-end sm:self-center">
+              <div className="shrink-0 flex items-center space-x-3 self-end md:self-center">
                 <VoiceSummaryButton
                   speechText={analysisResult.speech_summary || analysisResult.summary}
                 />
-                <div className="text-right text-[11px] text-slate-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 hidden md:block">
+                <div className="text-right text-[11px] text-slate-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 hidden sm:block">
                   ID: {analysisResult.analysis_id.slice(0, 8)}
                 </div>
               </div>
@@ -286,19 +284,19 @@ export default function Home() {
 
             {/* Multi-View Angle Selector Tabs (if multiple images were analyzed) */}
             {previewUrls.length > 1 && (
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center space-x-3">
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center space-x-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
-                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Switch Camera Angle:</span>
+                  <Layers className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Switch Camera Perspective:</span>
                 </span>
                 <div className="flex items-center space-x-2">
                   {previewUrls.map((_, i) => (
                     <button
                       key={i}
                       onClick={() => setActivePreviewIndex(i)}
-                      className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition ${
                         activePreviewIndex === i
-                          ? 'bg-cyan-950 border border-cyan-700 text-cyan-300'
+                          ? 'bg-cyan-950 border border-cyan-600 text-cyan-300 shadow-sm'
                           : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
                       }`}
                     >
@@ -309,24 +307,19 @@ export default function Home() {
               </div>
             )}
 
-            {/* Main Grid: Left Visuals & Evidence, Right Intelligence & Score */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Visual Perception & Grounded Evidence (7 cols) */}
-              <div className="lg:col-span-7 space-y-6">
+            {/* Row 1: Visual Perception (left) + Accessibility Scorecard (right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Visual Scene Perception (7 cols) */}
+              <div className="lg:col-span-7 h-full">
                 <VisualComparison
                   originalImageUrl={activePreviewUrl}
                   annotatedImageUrl={analysisResult.annotated_image}
                   detections={analysisResult.detections}
                 />
-                <DetectionTags detections={analysisResult.detections} />
-                <EvidenceSection
-                  evidence={analysisResult.evidence}
-                  uncertainties={analysisResult.uncertainties}
-                />
               </div>
 
-              {/* Right Column: Score, Risks, Recommendations (5 cols) */}
-              <div className="lg:col-span-5 space-y-6">
+              {/* Right Column: Scorecard with Breakdown (5 cols) */}
+              <div className="lg:col-span-5 h-full">
                 <ScoreCard
                   score={analysisResult.accessibility_score}
                   classification={analysisResult.classification}
@@ -338,13 +331,25 @@ export default function Home() {
                   processingTimeMs={analysisResult.processing_time_ms}
                   inferenceTimeMs={analysisResult.inference_time_ms}
                 />
-                <RiskList risks={analysisResult.risks} />
-                <RecommendationList recommendations={analysisResult.recommendations} />
               </div>
             </div>
 
-            {/* Technical Details Inspection Panel for Hackathon Judges */}
-            <div className="pt-2">
+            {/* Row 2: Barriers & Recommendations (Equal 2 columns across 12 cols) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <RiskList risks={analysisResult.risks} />
+              <RecommendationList recommendations={analysisResult.recommendations} />
+            </div>
+
+            {/* Row 3: Verified Knowledge vs Unknown Reality Panel (Full Width 12 cols) */}
+            <div className="w-full">
+              <EvidenceSection
+                evidence={analysisResult.evidence}
+                uncertainties={analysisResult.uncertainties}
+              />
+            </div>
+
+            {/* Row 4: Technical Details Inspection Panel for Hackathon Judges (Full Width 12 cols) */}
+            <div className="w-full">
               <TechnicalDetailsModal
                 analysis={analysisResult}
                 activeProfile={selectedProfile}
