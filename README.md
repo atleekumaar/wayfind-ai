@@ -3,7 +3,7 @@
 
 An AI-powered accessibility intelligence platform that analyzes street, sidewalk, and entrance imagery to compute explainable, evidence-based physical accessibility assessments ($0–100$) before users arrive.
 
-[![Backend Tests](https://img.shields.io/badge/pytest-18%20passed-emerald)](file:///backend/tests)
+[![Backend Tests](https://img.shields.io/badge/pytest-34%20passed-emerald)](file:///backend/tests)
 [![Next.js Build](https://img.shields.io/badge/Next.js%2014-clean%20build-cyan)](file:///frontend)
 [![Model](https://img.shields.io/badge/YOLOv8n-CPU%20optimized-blue)](docs/model-card.md)
 [![License](https://img.shields.io/badge/license-MIT-slate)](LICENSE)
@@ -12,9 +12,9 @@ An AI-powered accessibility intelligence platform that analyzes street, sidewalk
 
 ## 🌍 The Problem
 
-Over **1.3 billion people worldwide** experience significant disabilities. For wheelchair users, the elderly, parents with strollers, and people with mobility impairments, navigating global cities is filled with hidden barriers. 
+Over **1.3 billion people worldwide** live with significant physical disabilities. For wheelchair users, the elderly, parents with strollers, and people with mobility impairments, navigating global cities is filled with hidden barriers. 
 
-Public mapping platforms tell you how to get to a street address, but they cannot tell you whether the entrance has a sudden flight of seven steps, an impassable curb, or a pathway blocked by outdoor construction. Too often, people only discover barriers after they arrive.
+Public navigation apps tell you how to navigate to a building address, but they cannot tell you whether the entrance portal has a sudden flight of seven concrete steps, an impassable curb cut, or a sidewalk blocked by outdoor furniture and construction. Too often, people only discover barriers after they arrive.
 
 ---
 
@@ -22,146 +22,147 @@ Public mapping platforms tell you how to get to a street address, but they canno
 
 **WAYFIND AI** converts standard smartphone and camera photos into **actionable accessibility intelligence**.
 
-Instead of delegating critical safety assessments to a hallucinating black-box LLM, WAYFIND utilizes a **transparent, evidence-aware computer vision and deterministic rules pipeline**:
+Instead of delegating critical safety assessments to a hallucinating black-box LLM, WAYFIND utilizes a **transparent, evidence-aware computer vision, spatial corridor reasoning, and deterministic rules pipeline**:
 
 ```
-      IMAGE CAPTURE
-            │
-            ▼
-   YOLOv8 Computer Vision
-            │
-   Visual Entity Detections
-            │
-            ▼
-┌──────────────────────────────────────┐
-│       Visual Evidence Layer          │
-│   • Detected  • Inferred  • Unknown  │
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│      Accessibility Rules Engine      │
-│   Deterministic Bounded Score [0-100]│
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-     EXPLAINABLE WAYFIND REPORT
+      IMAGE CAPTURE (1 to 3 Viewpoints)
+                     │
+                     ▼
+           YOLOv8 Computer Vision
+                     │
+       Native 80 COCO Object Detections
+                     │
+                     ▼
+    ┌──────────────────────────────────┐
+    │    Spatial Corridor Reasoner     │
+    │  • Walkway corridor (20%-80% w)  │
+    │  • Base ground plane (y >= 45% h)│
+    │  • Obstruction vs Contextual     │
+    └────────────────┬─────────────────┘
+                     │
+                     ▼
+    ┌──────────────────────────────────┐
+    │     Evidence Separation Layer    │
+    │   • Detected  • Inferred • ?     │
+    └────────────────┬─────────────────┘
+                     │
+                     ▼
+    ┌──────────────────────────────────┐
+    │    Mobility Profile Rules Engine │
+    │   Wheelchair / Walker / Stroller │
+    │   Deterministic Bounded [0-100]  │
+    └────────────────┬─────────────────┘
+                     │
+                     ▼
+    ┌──────────────────────────────────┐
+    │    Multi-View Fusion Engine      │
+    │    Conservative Barrier Safety   │
+    └────────────────┬─────────────────┘
+                     │
+                     ▼
+         EXPLAINABLE WAYFIND REPORT
+    (Visual Overlay + Speech Audio + Audit)
 ```
 
 ---
 
-## 🎯 Why It Matters
+## 🎯 Key Innovation Pillars
 
-- **Wheelchair Users & Mobility Device Operators**: Instant advance warning of structural step barriers and narrow corridor restrictions.
-- **Elderly Pedestrians**: Reliable identification of stair-free, grade-level access paths.
-- **Smart Cities & Municipalities**: Rapid visual auditing of curb ramp infrastructure and pedestrian corridor compliance.
-- **Hospitals & Campuses**: Auditing patient drop-off accessibility and universal access ingress portals.
+1. **Spatial Pedestrian Corridor Reasoning**:
+   WAYFIND avoids naive global object counting. Objects on the outer roadway or verge are categorized as `contextual_outside_corridor` with **0 points penalty**. Only items directly occupying the central walkway ($y \ge 0.45h, 0.20w \le x \le 0.80w$) trigger barrier penalties.
 
----
+2. **Personalized Mobility Profiles**:
+   Supports 5 distinct assistive personas:
+   - **Wheelchair**: Strict sensitivity to step barriers and narrow doorway pinch points.
+   - **Walker / Cane**: Heightened penalties on ground clutter and tripping hazards.
+   - **Stroller / Cart**: Rolling clearance and curb transition focus.
+   - **Low Vision**: Ground obstacle alerts and high-contrast voice narration.
+   - **General Mobility**: Baseline urban pedestrian traversal.
 
-## 🔬 How It Works
+3. **Multi-View Evidence Fusion**:
+   Aggregates 1 to 3 complementary perspectives (Approach, Entrance, Corridor). Enforces conservative safety guarantees ($\min(\text{score}_i)$) to prevent a clear angle from concealing a blocked portal.
 
-1. **Computer Vision Perception**: Ultralytics YOLOv8n localizes objects (stairs, benches, vehicles, pedestrians) with precise bounding box coordinates in under 180ms on CPU.
-2. **Evidence Separation**: The system partitions reality into three explicit tiers:
-   - **Detected Evidence**: Physical entities localized directly in the camera frame.
-   - **Inferred Context**: Spatial conclusions drawn from surrounding conditions.
-   - **Explicit Unknowns**: Infrastructure elements (e.g., tactile paving, ADA ramp slope) that cannot be verified from a 2D monocular frame.
-3. **Deterministic Scoring Engine**: Calculates an objective score clamped to $[0, 100]$:
-   - Stairs barrier: $-25\text{ pts}$
-   - Pathway obstacle: $-10\text{ pts}$
-   - Vehicle proximity: $-15\text{ pts}$
-   - Pedestrian crowd congestion: $-5\text{ pts}$
-   - Positively identified ramp: $+15\text{ pts}$
-   - Confirmed clear pathway: $+10\text{ pts}$
-4. **Responsible AI Restraint**: Absence of visual evidence is never treated as proof of absence. An unseen ramp receives $0$ penalty points.
-5. **Grounded Explanations**: A pluggable explanation provider converts structured evidence into concise, safety-first navigational guidance without hallucination.
+4. **Transparent "Why This Score?" Audit**:
+   Every score deduction is fully auditable in an interactive modal showing baseline starting points (100), applied factor multipliers, and non-penalized unobserved features.
+
+5. **Browser-Native Spoken Accessibility Summary**:
+   Uses the browser's native `window.speechSynthesis` API to narrate real-time accessibility findings without external cloud API dependencies.
 
 ---
 
 ## ⚖️ Responsible AI Principles
 
-- **No Overclaiming**: WAYFIND provides *visual accessibility assistance*, not legally certified building inspections.
-- **Explicit Uncertainty Reporting**: The system reports `assessment_confidence` (High, Medium, Low) and bounds evaluation to `assessment_scope: "visible_area_only"`.
-- **Zero Hallucination Scoring**: The score is mathematically derived and cannot be altered or overridden by an LLM.
+- **Absence of Evidence ≠ Evidence of Absence**:
+  WAYFIND explicitly refuses to penalize places for unobserved accessibility infrastructure. Unseen ramps or tactile paving receive status `unknown` with **0 points deducted**.
+- **Model Class Boundary Honesty**:
+  Native YOLOv8n weights map 80 COCO classes. Specialized architectural features (`ramp`, `tactile_paving`, `stairs`, `curb_cut`, `door_width`) are never falsely claimed as native detections without dedicated verification.
+- **Read-Only LLM Explanations**:
+  Natural language explanations are grounded in deterministic evidence. The LLM cannot alter score values or hallucinate unseen obstacles.
+- **Scope Delimitation**:
+  Every assessment is explicitly bounded to `assessment_scope: "visible_area_only"`.
 
 ---
 
-## 🎮 Explore Demo Scenarios
+## 🎮 Curated Benchmark Demo Scenes
 
 WAYFIND includes three built-in test environments for instant demonstration:
 
-| Scenario | Environment Description | Expected Accessibility Score |
-|---|---|---|
-| **Scene 1: Historic Metro Station** | 7 concrete steps to entrance portal; no ramp visible | **Partially Accessible** (~48/100) |
-| **Scene 2: Commercial Sidewalk** | Flat pavement with roadside delivery van and cafe bench | **Mostly Accessible** (~75/100) |
-| **Scene 3: Accessible Hospital Plaza** | Wide grade-level approach with automatic doors | **Fully Accessible** (100/100) |
+| Scenario | Environment Description | Profile Tested | Expected Score |
+|---|---|---|---|
+| **Scene 1: Historic Metro Station** | 7 concrete steps to entrance portal; no ramp in frame | Wheelchair | **Partially Accessible** (~48/100) |
+| **Scene 2: Commercial Sidewalk** | Flat pavement with roadside delivery van and cafe bench | General | **Mostly Accessible** (~75/100) |
+| **Scene 3: Accessible Hospital Plaza** | Wide grade-level approach with automatic doors | Walker | **Fully Accessible** (100/100) |
 
 ---
 
-## 🚀 Running Locally
+## 🚀 Quickstart & Local Setup
 
 ### Prerequisites
-- Python 3.12+ (64-bit)
+- Python 3.10+ (with PyTorch and Ultralytics)
 - Node.js 18+ and npm
 
-### 1. Start the Backend API
+### 1. Backend Service
 ```bash
 cd backend
-
-# Install dependencies (if not already installed)
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# Start FastAPI server
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-- Swagger API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Healthcheck: [http://localhost:8000/health](http://localhost:8000/health)
+# Run backend test suite (34 passing tests)
+pytest tests/ -v
 
-### 2. Start the Frontend Dashboard
+# Start FastAPI server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+API Documentation: `http://localhost:8000/docs`
+
+### 2. Frontend Dashboard
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
+
+# Run TypeScript verification
+npx tsc --noEmit
 
 # Start Next.js development server
 npm run dev
 ```
-- Web Application: [http://localhost:3000](http://localhost:3000)
-
-### 3. Run Test Suite
-```bash
-python -m pytest backend/tests/ -v
-```
-*(All 18 tests cover scoring bounds, penalty weights, confidence calculation, evidence serialization, and image validation).*
+Dashboard: `http://localhost:3000`
 
 ---
 
-## 🐳 Docker Deployment
+## 📚 Technical Documentation
 
-Run both backend and frontend in isolated containers:
-```bash
-docker-compose up --build
-```
-Access the application at `http://localhost:3000`.
-
----
-
-## 🔍 Limitations & Future Work
-
-### Current Limitations
-- **General Pretrained Weights**: YOLOv8n is pretrained on COCO. Dedicated classes like ADA-compliant curb cuts and tactile paving require specialized accessibility datasets.
-- **Monocular Geometry**: Metric slope angles (1:12 ADA standard) cannot be computed with millimeter accuracy from a single 2D camera perspective.
-
-### Future Work
-- **Dedicated Accessibility Dataset**: Fine-tuning YOLOv8 on 50,000+ annotated public infrastructure images.
-- **Depth & Slope Estimation**: Integrating lightweight monocular depth estimation to measure approximate ramp incline angles.
-- **LiDAR Integration**: Combining RGB imagery with foveated LiDAR and 2.5D point-cloud spatial maps.
-- **Multimodal Audio Navigation**: Spoken spatial directions for visually impaired pedestrians via Google Antigravity SDK.
-- **OpenStreetMap Integration**: Crowdsourced geo-tagged accessibility intelligence for global smart city mapping.
+- [System Architecture](docs/architecture.md)
+- [Spatial Corridor Reasoning](docs/spatial-reasoning.md)
+- [Accessibility Profiles](docs/accessibility-profiles.md)
+- [Multi-View Fusion](docs/multiview.md)
+- [Responsible AI Framework](docs/responsible-ai.md)
+- [Model Card (YOLOv8n)](docs/model-card.md)
+- [Hackathon Demo Walkthrough Script](docs/demo-script.md)
+- [Judge Pitch Script](docs/pitch.md)
 
 ---
 
-## 📄 License
-
-MIT License. See [LICENSE](LICENSE) for details.
+## 📜 License
+MIT License. Built for the Global Hackathon 2026.
