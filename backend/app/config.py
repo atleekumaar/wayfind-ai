@@ -5,8 +5,8 @@ class Settings:
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     ALLOWED_ORIGINS: List[str] = os.getenv(
-        "ALLOWED_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001"
+        "WAYFIND_ALLOWED_ORIGINS",
+        os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,*")
     ).split(",")
     MODEL_PATH: str = os.getenv("MODEL_PATH", "yolov8n.pt")
     DEFAULT_CONFIDENCE: float = float(os.getenv("CONFIDENCE_THRESHOLD", "0.30"))
