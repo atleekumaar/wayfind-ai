@@ -23,6 +23,7 @@ runs/
 frontend/.next/
 frontend/out/
 frontend/build/
+*.tsbuildinfo
 
 # Testing & Coverage
 .pytest_cache/

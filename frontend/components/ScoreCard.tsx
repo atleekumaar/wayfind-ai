@@ -1,25 +1,31 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   AccessibilityClassification,
   AssessmentConfidence,
   ScoreBreakdown,
+  AccessibilityProfile,
 } from '../lib/types';
 import {
   ShieldCheck,
   AlertTriangle,
   AlertOctagon,
   CheckCircle2,
-  Timer,
   Zap,
   Globe2,
+  Calculator,
+  UserCheck,
+  HelpCircle,
 } from 'lucide-react';
+import { ScoreAuditModal } from './ScoreAuditModal';
 
 interface ScoreCardProps {
   score: number;
   classification: AccessibilityClassification;
   confidence: AssessmentConfidence;
+  visionConfidence?: number | null;
+  profile: AccessibilityProfile;
   scope: string;
   breakdown?: ScoreBreakdown;
   processingTimeMs: number;
@@ -30,11 +36,23 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   score,
   classification,
   confidence,
+  visionConfidence,
+  profile,
   scope,
   breakdown,
   processingTimeMs,
   inferenceTimeMs,
 }) => {
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+
+  const profileDisplay: Record<AccessibilityProfile, { label: string; badge: string }> = {
+    general_mobility: { label: 'General Mobility', badge: 'bg-slate-800 text-slate-300' },
+    wheelchair: { label: 'Wheelchair Mode', badge: 'bg-blue-950 text-blue-300 border-blue-800' },
+    walker: { label: 'Walker / Cane Mode', badge: 'bg-teal-950 text-teal-300 border-teal-800' },
+    stroller: { label: 'Stroller / Cart Mode', badge: 'bg-indigo-950 text-indigo-300 border-indigo-800' },
+    low_vision: { label: 'Low Vision Mode', badge: 'bg-purple-950 text-purple-300 border-purple-800' },
+  };
+
   const getTheme = () => {
     if (score >= 90) {
       return {
@@ -71,6 +89,16 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
     }
   };
 
+  const getConfidenceBadge = () => {
+    if (confidence === 'HIGH') {
+      return 'bg-emerald-950/80 text-emerald-300 border-emerald-800';
+    } else if (confidence === 'MEDIUM') {
+      return 'bg-amber-950/80 text-amber-300 border-amber-800';
+    } else {
+      return 'bg-rose-950/80 text-rose-300 border-rose-800';
+    }
+  };
+
   const theme = getTheme();
   const Icon = theme.icon;
 
@@ -85,9 +113,15 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
 
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <h3 className="text-xs uppercase font-extrabold tracking-widest text-slate-400">
-          Accessibility Assessment
-        </h3>
+        <div className="flex items-center space-x-2">
+          <h3 className="text-xs uppercase font-extrabold tracking-widest text-slate-400">
+            Accessibility Assessment
+          </h3>
+          <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${profileDisplay[profile].badge}`}>
+            {profileDisplay[profile].label}
+          </span>
+        </div>
+
         <div className="flex items-center space-x-2 text-xs">
           <span className="flex items-center space-x-1 text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
             <Zap className="w-3 h-3 text-cyan-400" />
@@ -129,8 +163,8 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
           </div>
         </div>
 
-        {/* Classification, Confidence & Scope */}
-        <div className="flex-1 text-center sm:text-left space-y-2">
+        {/* Classification, Dual Confidence & Scope */}
+        <div className="flex-1 text-center sm:text-left space-y-2.5">
           <div className="inline-flex items-center space-x-2">
             <span className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${theme.badgeBg}`}>
               <Icon className="w-4 h-4" />
@@ -138,10 +172,18 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             </span>
           </div>
 
+          {/* Dual Confidence Display */}
           <div className="flex flex-wrap items-center gap-2 pt-1 justify-center sm:justify-start">
-            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
-              Confidence: {confidence}
+            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getConfidenceBadge()}`}>
+              Assessment: {confidence} Confidence
             </span>
+
+            {visionConfidence !== undefined && visionConfidence !== null && (
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
+                Vision Conf: {Math.round(visionConfidence * 100)}%
+              </span>
+            )}
+
             <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 flex items-center space-x-1">
               <Globe2 className="w-2.5 h-2.5 text-cyan-400" />
               <span>{scope.replace(/_/g, ' ')}</span>
@@ -149,8 +191,19 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
           </div>
 
           <p className="text-xs text-slate-400 leading-relaxed pt-1">
-            Deterministic evaluation against physical step barriers, pathway width clearance, and observable infrastructure.
+            Grounded spatial evaluation against physical corridor clearance, barrier proximity, and mobility profile criteria.
           </p>
+
+          {/* "Why this score?" Trigger Button */}
+          <div className="pt-1">
+            <button
+              onClick={() => setIsAuditOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-700 text-[11px] font-semibold text-cyan-300 transition-colors shadow-sm"
+            >
+              <Calculator className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Why this score? (Calculation Audit)</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -158,7 +211,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
       {breakdown && breakdown.factors.length > 0 && (
         <div className="pt-3 border-t border-slate-800">
           <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">
-            Evidence-Engine Factor Breakdown:
+            Observable Factor Deductions:
           </span>
           <ul className="space-y-1.5 text-xs">
             {breakdown.factors.map((factor, idx) => (
@@ -173,6 +226,17 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             ))}
           </ul>
         </div>
+      )}
+
+      {/* Audit Modal */}
+      {breakdown && (
+        <ScoreAuditModal
+          isOpen={isAuditOpen}
+          onClose={() => setIsAuditOpen(false)}
+          score={score}
+          breakdown={breakdown}
+          profile={profile}
+        />
       )}
     </div>
   );

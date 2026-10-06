@@ -10,8 +10,9 @@ import { RiskList } from '../components/RiskList';
 import { RecommendationList } from '../components/RecommendationList';
 import { DetectionTags } from '../components/DetectionTags';
 import { TechnicalDetailsModal } from '../components/TechnicalDetailsModal';
-import { checkBackendHealth, analyzeImage } from '../lib/api';
-import { AnalysisResponse, DemoScene } from '../lib/types';
+import { VoiceSummaryButton } from '../components/VoiceSummaryButton';
+import { checkBackendHealth, analyzeImage, analyzeMultiView } from '../lib/api';
+import { AnalysisResponse, DemoScene, AccessibilityProfile } from '../lib/types';
 import { DEMO_SCENES } from '../lib/demoScenes';
 import {
   AlertCircle,
@@ -26,13 +27,16 @@ import {
   PlayCircle,
   HelpCircle,
   ShieldAlert,
+  Volume2,
 } from 'lucide-react';
 
 export default function Home() {
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<AccessibilityProfile>('general_mobility');
   const [activeDemo, setActiveDemo] = useState<DemoScene | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState<number>(0);
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(0.30);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisStep, setAnalysisStep] = useState<number>(1);
@@ -41,7 +45,7 @@ export default function Home() {
 
   const uploaderRef = useRef<HTMLDivElement>(null);
 
-  // Periodic health probe
+  // Periodic health check
   useEffect(() => {
     let mounted = true;
     const verifyHealth = async () => {
@@ -56,43 +60,73 @@ export default function Home() {
     };
   }, []);
 
-  const handleImageSelected = (file: File, isDemo = false, demoInfo?: DemoScene) => {
-    setSelectedFile(file);
+  const handleFilesSelected = (files: File[], isDemo = false, demoInfo?: DemoScene) => {
+    setSelectedFiles(files);
     setActiveDemo(isDemo && demoInfo ? demoInfo : null);
     setError(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
     setAnalysisResult(null);
+
+    // Clean up previous URLs
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+
+    const newUrls = files.map((f) => URL.createObjectURL(f));
+    setPreviewUrls(newUrls);
+    setActivePreviewIndex(0);
   };
 
   const handleReset = () => {
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setActiveDemo(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setPreviewUrl(null);
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    setPreviewUrls([]);
+    setActivePreviewIndex(0);
     setAnalysisResult(null);
     setError(null);
   };
 
   const handleAnalyze = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     setIsAnalyzing(true);
     setAnalysisStep(1);
     setError(null);
 
-    // Realistic state transitions through analysis steps
     const timer1 = setTimeout(() => setAnalysisStep(2), 250);
     const timer2 = setTimeout(() => setAnalysisStep(3), 500);
     const timer3 = setTimeout(() => setAnalysisStep(4), 850);
 
     try {
-      const result = await analyzeImage(selectedFile, confidenceThreshold);
+      let result: AnalysisResponse;
+      if (selectedFiles.length > 1) {
+        const multiRes = await analyzeMultiView(selectedFiles, confidenceThreshold, selectedProfile);
+        const primary = multiRes.individual_analyses[0] || ({} as any);
+        result = {
+          success: multiRes.success,
+          analysis_id: multiRes.analysis_id,
+          accessibility_score: multiRes.accessibility_score,
+          classification: multiRes.classification,
+          assessment_confidence: multiRes.assessment_confidence,
+          vision_confidence: multiRes.vision_confidence,
+          assessment_scope: 'multi_view_aggregated',
+          profile: multiRes.profile,
+          image_source_label: 'USER_IMAGE',
+          viewpoints_analyzed: multiRes.viewpoints_count,
+          detections: primary.detections || [],
+          spatial_assessments: primary.spatial_assessments || [],
+          evidence: multiRes.fused_evidence,
+          risks: multiRes.fused_risks,
+          recommendations: multiRes.fused_recommendations,
+          uncertainties: multiRes.fused_uncertainties,
+          summary: multiRes.summary,
+          speech_summary: multiRes.speech_summary,
+          processing_time_ms: multiRes.total_processing_time_ms,
+          inference_time_ms: primary.inference_time_ms,
+          score_breakdown: primary.score_breakdown,
+          annotated_image: primary.annotated_image,
+        };
+      } else {
+        result = await analyzeImage(selectedFiles[0], confidenceThreshold, selectedProfile);
+      }
       setAnalysisResult(result);
     } catch (err: any) {
       setError(
@@ -109,9 +143,18 @@ export default function Home() {
   const handleExploreDemoClick = async () => {
     const firstDemo = DEMO_SCENES[0];
     const file = await firstDemo.generateBlob();
-    handleImageSelected(file, true, firstDemo);
+    handleFilesSelected([file], true, firstDemo);
     uploaderRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const activePreviewUrl = previewUrls[activePreviewIndex] || null;
+
+  // Average vision confidence calculation across detections
+  const visionConfidenceAvg =
+    analysisResult && analysisResult.detections.length > 0
+      ? analysisResult.detections.reduce((acc, d) => acc + d.confidence, 0) /
+        analysisResult.detections.length
+      : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0a0d14] text-slate-100 selection:bg-cyan-500 selection:text-slate-950">
@@ -133,7 +176,7 @@ export default function Home() {
           </h1>
 
           <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Analyze the visible physical environment, identify structural barriers, and receive evidence-based wayfinding intelligence before you arrive.
+            Analyze physical pedestrian environments, detect walkway corridor barriers, and evaluate mobility clearance across wheelchair, walker, and stroller profiles.
           </p>
 
           {/* Action CTAs */}
@@ -155,28 +198,30 @@ export default function Home() {
 
           {/* Visual Architecture Flow Pill */}
           <div className="pt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 font-mono">
-            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800">IMAGE</span>
+            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800">IMAGE(S)</span>
             <span>→</span>
-            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-cyan-400">VISION</span>
+            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-cyan-400">YOLOv8n</span>
             <span>→</span>
-            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-emerald-400">EVIDENCE</span>
+            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-emerald-400">SPATIAL CORRIDOR</span>
             <span>→</span>
-            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-amber-400">RULES ENGINE</span>
+            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-amber-400">PROFILE RULES</span>
             <span>→</span>
-            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-blue-400">AI EXPLANATION</span>
+            <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-blue-400">EVIDENCE AUDIT</span>
           </div>
         </div>
 
         {/* Upload & Controls */}
         <section ref={uploaderRef} className="max-w-4xl mx-auto">
           <ImageUploader
-            onImageSelected={handleImageSelected}
+            onFilesSelected={handleFilesSelected}
             confidenceThreshold={confidenceThreshold}
             onConfidenceChange={setConfidenceThreshold}
             isAnalyzing={isAnalyzing}
             analysisStep={analysisStep}
-            selectedFile={selectedFile}
+            selectedFiles={selectedFiles}
             activeDemo={activeDemo}
+            selectedProfile={selectedProfile}
+            onProfileChange={setSelectedProfile}
             onAnalyze={handleAnalyze}
             onReset={handleReset}
           />
@@ -200,39 +245,76 @@ export default function Home() {
         )}
 
         {/* Results Dashboard */}
-        {analysisResult && previewUrl && (
+        {analysisResult && activePreviewUrl && (
           <section className="space-y-6 animate-in fade-in duration-500">
-            {/* Top Insight & Wayfinding Summary Banner */}
+            {/* Top Insight & Wayfinding Summary Banner with Audio Narration */}
             <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start space-x-3.5">
                 <div className="p-2.5 rounded-xl bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 shrink-0 mt-0.5">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-xs font-bold text-white uppercase tracking-wider">
                       Executive Spatial Assessment
                     </h2>
                     <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
-                      Scope: Visible Area Only
+                      Scope: {analysisResult.assessment_scope.replace(/_/g, ' ')}
                     </span>
+                    {selectedFiles.length > 1 && (
+                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                        Multi-View Aggregated ({selectedFiles.length} Angles)
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed max-w-4xl">
                     {analysisResult.summary}
                   </p>
                 </div>
               </div>
-              <div className="shrink-0 text-right text-[11px] text-slate-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-                ID: {analysisResult.analysis_id}
+
+              {/* Action area: Spoken Assessment Audio & ID badge */}
+              <div className="shrink-0 flex items-center space-x-3 self-end sm:self-center">
+                <VoiceSummaryButton
+                  speechText={analysisResult.speech_summary || analysisResult.summary}
+                />
+                <div className="text-right text-[11px] text-slate-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 hidden md:block">
+                  ID: {analysisResult.analysis_id.slice(0, 8)}
+                </div>
               </div>
             </div>
+
+            {/* Multi-View Angle Selector Tabs (if multiple images were analyzed) */}
+            {previewUrls.length > 1 && (
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center space-x-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Switch Camera Angle:</span>
+                </span>
+                <div className="flex items-center space-x-2">
+                  {previewUrls.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setActivePreviewIndex(i)}
+                      className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition ${
+                        activePreviewIndex === i
+                          ? 'bg-cyan-950 border border-cyan-700 text-cyan-300'
+                          : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Angle {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Main Grid: Left Visuals & Evidence, Right Intelligence & Score */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Column: Visual Perception & Grounded Evidence (7 cols) */}
               <div className="lg:col-span-7 space-y-6">
                 <VisualComparison
-                  originalImageUrl={previewUrl}
+                  originalImageUrl={activePreviewUrl}
                   annotatedImageUrl={analysisResult.annotated_image}
                   detections={analysisResult.detections}
                 />
@@ -249,6 +331,8 @@ export default function Home() {
                   score={analysisResult.accessibility_score}
                   classification={analysisResult.classification}
                   confidence={analysisResult.assessment_confidence}
+                  visionConfidence={visionConfidenceAvg}
+                  profile={selectedProfile}
                   scope={analysisResult.assessment_scope}
                   breakdown={analysisResult.score_breakdown}
                   processingTimeMs={analysisResult.processing_time_ms}
@@ -261,7 +345,10 @@ export default function Home() {
 
             {/* Technical Details Inspection Panel for Hackathon Judges */}
             <div className="pt-2">
-              <TechnicalDetailsModal analysis={analysisResult} />
+              <TechnicalDetailsModal
+                analysis={analysisResult}
+                activeProfile={selectedProfile}
+              />
             </div>
           </section>
         )}
@@ -272,7 +359,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© 2026 WAYFIND AI — Visual Intelligence for Accessible Places</p>
           <p className="text-[11px] font-mono text-slate-400">
-            Pipeline: YOLOv8n Object Vision → Structured Evidence → Deterministic Rules → OpenCV Visuals
+            Pipeline: YOLOv8n Vision → Spatial Corridor Reasoning → Profile Matrices → Grounded Audit
           </p>
         </div>
       </footer>

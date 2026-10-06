@@ -16,7 +16,6 @@ function createSceneFile(
       if (blob) {
         resolve(new File([blob], filename, { type: 'image/jpeg' }));
       } else {
-        // Fallback dummy file
         resolve(new File([''], filename, { type: 'image/jpeg' }));
       }
     }, 'image/jpeg', 0.92);
@@ -29,38 +28,39 @@ export const DEMO_SCENES: DemoScene[] = [
     title: 'Historic Metro Station Entrance',
     tagline: 'Multi-flight stair barrier with no observable grade transition',
     description:
-      'A public transit entrance with 7 concrete steps, doorway portal, and pedestrian presence. Evaluates detection of high-severity physical step hazards.',
-    expectedTier: 'Partially Accessible (45-55/100)',
-    barrierSummary: 'Stair barrier detected (-25 pts); Ramp availability unknown (0 pts penalty).',
+      'A synthetic test environment representing an older transit portal with 7 concrete steps, doorway portal, and pedestrian presence. Evaluates detection of structural step hazards.',
+    expectedTier: 'Partially Accessible',
+    expectedScoreRange: '45–55 / 100',
+    expectedEvidence: [
+      'Stairs / Steps (Identified barrier)',
+      'Pedestrian presence (Context)',
+      'Ramp availability (Unknown, 0 penalty)',
+    ],
+    barrierSummary: 'Stair barrier detected (-25 to -35 pts); Ramp availability unknown (0 pts penalty).',
+    whyItMatters:
+      'Demonstrates that stairs are treated as primary physical barriers while respecting the rule that an unobserved ramp is not penalized.',
     generateBlob: () =>
       createSceneFile('demo_station_stairs.jpg', (ctx, w, h) => {
-        // Sky/Background
         const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
         bgGrad.addColorStop(0, '#0f172a');
         bgGrad.addColorStop(1, '#1e293b');
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, w, h);
 
-        // Building Facade
         ctx.fillStyle = '#334155';
         ctx.fillRect(80, 60, w - 160, 260);
 
-        // Entrance Portal
         ctx.fillStyle = '#090d16';
         ctx.fillRect(240, 120, 160, 200);
 
-        // Steps Leading Up to Entrance (stair geometry)
         for (let i = 0; i < 7; i++) {
           const stepY = 240 + i * 28;
           ctx.fillStyle = i % 2 === 0 ? '#64748b' : '#475569';
           ctx.fillRect(100 + i * 14, stepY, w - 200 - i * 28, 28);
-          
-          // Edge highlight
           ctx.fillStyle = '#94a3b8';
           ctx.fillRect(100 + i * 14, stepY, w - 200 - i * 28, 3);
         }
 
-        // Handrails
         ctx.strokeStyle = '#cbd5e1';
         ctx.lineWidth = 4;
         ctx.beginPath();
@@ -70,7 +70,6 @@ export const DEMO_SCENES: DemoScene[] = [
         ctx.lineTo(w - 210, 420);
         ctx.stroke();
 
-        // Label on canvas for realism
         ctx.fillStyle = '#f8fafc';
         ctx.font = 'bold 16px sans-serif';
         ctx.fillText('METRO TRANSIT • ENTRANCE A', 180, 95);
@@ -81,26 +80,30 @@ export const DEMO_SCENES: DemoScene[] = [
     title: 'Urban Commercial Sidewalk',
     tagline: 'Step-free pavement with outdoor cafe bench and delivery van proximity',
     description:
-      'A downtown sidewalk featuring flat pavement, roadside vehicle, and pedestrian furniture. Tests obstruction clearance evaluation.',
-    expectedTier: 'Mostly Accessible (70-80/100)',
-    barrierSummary: 'Vehicle in proximity (-15 pts); Bench obstacle (-10 pts); Step-free pathway.',
+      'A synthetic test environment modeling flat pavement with roadside vehicle and pedestrian bench. Demonstrates spatial reasoning between corridor obstructions vs contextual objects.',
+    expectedTier: 'Mostly Accessible',
+    expectedScoreRange: '70–80 / 100',
+    expectedEvidence: [
+      'Bench obstacle in corridor (-10 pts)',
+      'Vehicle proximity on roadway boundary (-8 to -15 pts)',
+      'Step-free ground surface',
+    ],
+    barrierSummary: 'Vehicle in proximity; Bench obstacle; Step-free pathway.',
+    whyItMatters:
+      'Demonstrates that contextual objects outside the pedestrian corridor do not receive unfair accessibility penalties.',
     generateBlob: () =>
       createSceneFile('demo_commercial_sidewalk.jpg', (ctx, w, h) => {
-        // Sky & Street
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(0, 0, w, 180);
         ctx.fillStyle = '#334155';
         ctx.fillRect(0, 180, w, 300);
 
-        // Sidewalk pavement (flat concrete)
         ctx.fillStyle = '#64748b';
         ctx.fillRect(60, 180, 360, 300);
 
-        // Roadway on right
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(420, 180, 220, 300);
 
-        // Curb cut / curb line
         ctx.fillStyle = '#94a3b8';
         ctx.fillRect(415, 180, 10, 300);
 
@@ -111,14 +114,13 @@ export const DEMO_SCENES: DemoScene[] = [
         ctx.fillRect(470, 220, 40, 40);
         ctx.fillRect(550, 220, 40, 40);
 
-        // Cafe bench / chair on sidewalk
+        // Cafe bench on sidewalk
         ctx.fillStyle = '#b45309';
-        ctx.fillRect(100, 280, 120, 50);
+        ctx.fillRect(160, 280, 140, 50);
         ctx.fillStyle = '#78350f';
-        ctx.fillRect(110, 330, 10, 30);
-        ctx.fillRect(200, 330, 10, 30);
+        ctx.fillRect(170, 330, 10, 30);
+        ctx.fillRect(280, 330, 10, 30);
 
-        // Clean pedestrian corridor line
         ctx.fillStyle = '#f1f5f9';
         ctx.font = 'bold 14px sans-serif';
         ctx.fillText('PEDESTRIAN WALKWAY • 5TH AVE', 80, 220);
@@ -129,33 +131,37 @@ export const DEMO_SCENES: DemoScene[] = [
     title: 'Accessible Hospital Plaza',
     tagline: 'Wide unobstructed grade-level pathway with wide entrance clearance',
     description:
-      'A hospital approach plaza designed with expansive smooth paving, zero stair barriers, and uninhibited 48-inch clearance.',
-    expectedTier: 'Fully Accessible (95-100/100)',
+      'A synthetic test environment modeling a modern medical center approach with wide smooth paving, automatic sliding doors, and zero stairs.',
+    expectedTier: 'Fully Accessible',
+    expectedScoreRange: '95–100 / 100',
+    expectedEvidence: [
+      'Inferred clear navigation corridor (+10 pts reward)',
+      'Zero step barriers detected',
+      'Wide entrance corridor',
+    ],
     barrierSummary: 'Zero step barriers; Clear path verified (+10 pts reward); Clean approach.',
+    whyItMatters:
+      'Shows how confirmed clear pathways receive positive rewards and achieve a maximum 100-point rating.',
     generateBlob: () =>
       createSceneFile('demo_accessible_plaza.jpg', (ctx, w, h) => {
-        // Modern glass facade
         const facadeGrad = ctx.createLinearGradient(0, 0, 0, 200);
         facadeGrad.addColorStop(0, '#0284c7');
         facadeGrad.addColorStop(1, '#0e7490');
         ctx.fillStyle = facadeGrad;
         ctx.fillRect(0, 0, w, 200);
 
-        // Automatic sliding glass doors (wide ingress)
         ctx.fillStyle = '#155e75';
         ctx.fillRect(200, 60, 240, 140);
         ctx.fillStyle = '#e0f2fe';
         ctx.fillRect(240, 80, 70, 120);
         ctx.fillRect(330, 80, 70, 120);
 
-        // Smooth wide plaza walkway
         const pathGrad = ctx.createLinearGradient(0, 200, 0, h);
         pathGrad.addColorStop(0, '#64748b');
         pathGrad.addColorStop(1, '#94a3b8');
         ctx.fillStyle = pathGrad;
         ctx.fillRect(0, 200, w, 280);
 
-        // Navigable corridor guide lines
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 3;
         ctx.setLineDash([12, 8]);
