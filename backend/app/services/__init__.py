@@ -8,6 +8,8 @@ from .explanation import (
     LLMExplanationProvider,
     get_explanation_provider,
 )
+from .spatial_reasoning import SpatialReasoner
+from .multiview import MultiViewFusionEngine
 
 __all__ = [
     "Detector",
@@ -18,4 +20,6 @@ __all__ = [
     "DeterministicExplanationProvider",
     "LLMExplanationProvider",
     "get_explanation_provider",
+    "SpatialReasoner",
+    "MultiViewFusionEngine",
 ]

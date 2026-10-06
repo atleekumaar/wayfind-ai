@@ -18,16 +18,18 @@ def test_health_endpoint():
 
 
 def test_classes_endpoint():
-    """Verify supported classes endpoint."""
+    """Verify supported classes endpoint and model distinction."""
     response = client.get("/api/v1/classes")
     assert response.status_code == 200
     data = response.json()
     assert "classes" in data
-    assert "count" in data
+    assert "model_supported_classes" in data
+    assert "specialized_features_unsupported_by_coco" in data
+    assert "stairs" in data["specialized_features_unsupported_by_coco"]
 
 
 def test_analyze_rejects_unsupported_format():
-    """11. Upload non-image / unsupported format file and expect 400."""
+    """Upload non-image / unsupported format file and expect 400."""
     fake_file = io.BytesIO(b"Hello world not an image")
     response = client.post(
         "/api/v1/analyze",
@@ -38,7 +40,7 @@ def test_analyze_rejects_unsupported_format():
 
 
 def test_analyze_rejects_oversized_image():
-    """12. Rejects image exceeding maximum payload limit (10MB)."""
+    """Rejects image exceeding maximum payload limit (10MB)."""
     huge_data = io.BytesIO(b"0" * (11 * 1024 * 1024))
     response = client.post(
         "/api/v1/analyze",
@@ -49,7 +51,7 @@ def test_analyze_rejects_oversized_image():
 
 
 def test_analyze_rejects_empty_image():
-    """14. Rejects 0-byte upload with clean error."""
+    """Rejects 0-byte upload with clean error."""
     empty_file = io.BytesIO(b"")
     response = client.post(
         "/api/v1/analyze",
@@ -58,29 +60,62 @@ def test_analyze_rejects_empty_image():
     assert response.status_code == 400
 
 
-def test_analyze_with_valid_image_returns_evidence_and_uncertainties():
-    """13. Upload valid image and verify full Day 2 schema response."""
+def test_analyze_with_profile_query():
+    """Analyze with specific accessibility profile."""
     img = Image.new("RGB", (160, 160), color=(45, 85, 125))
     buf = io.BytesIO()
     img.save(buf, format="JPEG")
     buf.seek(0)
 
     response = client.post(
-        "/api/v1/analyze",
+        "/api/v1/analyze?profile=wheelchair",
         files={"image": ("test.jpg", buf, "image/jpeg")}
     )
     assert response.status_code == 200
     data = response.json()
+    assert data["profile"] == "wheelchair"
+    assert "speech_summary" in data
+    assert "spatial_assessments" in data
+
+
+def test_analyze_multiview_api_endpoint():
+    """Upload 2 images to /api/v1/analyze-multiview and expect fused response."""
+    img1 = Image.new("RGB", (160, 160), color=(50, 70, 90))
+    buf1 = io.BytesIO()
+    img1.save(buf1, format="JPEG")
+    buf1.seek(0)
+
+    img2 = Image.new("RGB", (160, 160), color=(90, 70, 50))
+    buf2 = io.BytesIO()
+    img2.save(buf2, format="JPEG")
+    buf2.seek(0)
+
+    response = client.post(
+        "/api/v1/analyze-multiview?profile=general_mobility",
+        files=[
+            ("images", ("view1.jpg", buf1, "image/jpeg")),
+            ("images", ("view2.jpg", buf2, "image/jpeg")),
+        ]
+    )
+    assert response.status_code == 200
+    data = response.json()
     assert data["success"] is True
-    assert "accessibility_score" in data
-    assert 0 <= data["accessibility_score"] <= 100
-    assert "assessment_confidence" in data
-    assert data["assessment_confidence"] in ["HIGH", "MEDIUM", "LOW"]
-    assert data["assessment_scope"] == "visible_area_only"
-    
-    assert "evidence" in data
-    assert len(data["evidence"]) > 0
-    assert "uncertainties" in data
-    assert len(data["uncertainties"]) > 0
-    assert "inference_time_ms" in data
-    assert "processing_time_ms" in data
+    assert data["viewpoints_count"] == 2
+    assert len(data["individual_analyses"]) == 2
+    assert "fused_evidence" in data
+    assert "fused_risks" in data
+
+
+def test_analyze_multiview_rejects_over_three_images():
+    """Verify max 3 images limit in /api/v1/analyze-multiview."""
+    files = []
+    for i in range(4):
+        img = Image.new("RGB", (100, 100), color=(i * 20, 50, 50))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        buf.seek(0)
+        files.append(("images", (f"view{i}.jpg", buf, "image/jpeg")))
+
+    response = client.post("/api/v1/analyze-multiview", files=files)
+    assert response.status_code == 400
+    assert "Maximum of 3 images" in response.json()["detail"]
