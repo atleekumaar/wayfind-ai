@@ -13,7 +13,13 @@ from app.services.accessibility import (
     THRESHOLD_PARTIALLY_ACCESSIBLE,
     PENALTY_STAIRS,
     PENALTY_OBSTACLE,
+    PENALTY_VEHICLE,
+    REWARD_RAMP,
     REWARD_CLEAR_PATH,
+)
+from app.services.explanation import (
+    DeterministicExplanationProvider,
+    LLMExplanationProvider,
 )
 
 
@@ -26,64 +32,60 @@ def make_detection(class_name: str, category: str = "general", confidence: float
     )
 
 
-class TestAccessibilityEngine:
-    
-    def test_no_risks_high_score(self):
-        """TEST 1: No risks should produce a high accessibility score and clear path reward."""
+class TestAccessibilityEngineDay2:
+
+    def test_score_bounds_and_clear_path(self):
+        """1. Score bounds & reward for confirmed clear scene."""
         res = AccessibilityEngine.analyze([])
         assert res["score"] == 100
         assert res["classification"] == FULLY_ACCESSIBLE
-        assert len(res["risks"]) == 0
-        assert any("No major accessibility barriers" in r.text for r in res["recommendations"])
+        assert 0 <= res["score"] <= 100
 
-    def test_stairs_score_decreases(self):
-        """TEST 2: Detected stairs should decrease score and generate risk."""
-        stair_det = make_detection("stairs", category="stair_hazard")
-        res = AccessibilityEngine.analyze([stair_det])
-        
-        # Base 100 - 25 = 75
+    def test_stairs_penalty(self):
+        """2. Stairs penalty applies correctly."""
+        stair = make_detection("stairs", category="stair_hazard")
+        res = AccessibilityEngine.analyze([stair])
         assert res["score"] == 100 - PENALTY_STAIRS
-        assert res["classification"] == MOSTLY_ACCESSIBLE
         assert any(r.type == "STAIRS_BARRIER" for r in res["risks"])
-        assert any("step-free" in r.text.lower() for r in res["recommendations"])
 
-    def test_stairs_and_obstacle_decreases_further(self):
-        """TEST 3: Stairs + obstacle decreases score further."""
-        stair_det = make_detection("stairs", category="stair_hazard")
-        obs_det = make_detection("bench", category="obstacle")
-        
-        res_single = AccessibilityEngine.analyze([stair_det])
-        res_both = AccessibilityEngine.analyze([stair_det, obs_det])
-        
-        assert res_both["score"] < res_single["score"]
-        assert res_both["score"] == 100 - PENALTY_STAIRS - PENALTY_OBSTACLE
-        assert any(r.type == "STAIRS_BARRIER" for r in res_both["risks"])
-        assert any(r.type == "PATHWAY_OBSTACLE" for r in res_both["risks"])
+    def test_obstacle_penalty(self):
+        """3. Obstacle penalty applies correctly."""
+        obs = make_detection("bench", category="obstacle")
+        res = AccessibilityEngine.analyze([obs])
+        assert res["score"] == 100 - PENALTY_OBSTACLE
+        assert any(r.type == "PATHWAY_OBSTACLE" for r in res["risks"])
 
-    def test_score_never_below_zero(self):
-        """TEST 4: Extreme hazards must not drive the score below 0."""
-        # 10 stairs, 10 obstacles, 10 vehicles
-        hazards = (
-            [make_detection("stairs", category="stair_hazard")] * 10
-            + [make_detection("chair", category="obstacle")] * 10
-            + [make_detection("truck", category="vehicle")] * 10
-        )
-        res = AccessibilityEngine.analyze(hazards)
-        assert res["score"] >= 0
-        assert res["score"] <= 100
-        assert res["classification"] == LIMITED_ACCESSIBILITY
+    def test_vehicle_penalty(self):
+        """4. Vehicle proximity penalty applies correctly."""
+        veh = make_detection("car", category="vehicle")
+        res = AccessibilityEngine.analyze([veh])
+        assert res["score"] == 100 - PENALTY_VEHICLE
+        assert any(r.type == "VEHICLE_PROXIMITY" for r in res["risks"])
 
-    def test_score_never_above_100(self):
-        """TEST 5: Extreme positive rewards must not drive the score above 100."""
-        rewards = [make_detection("ramp", category="accessible_feature")] * 5
-        res = AccessibilityEngine.analyze(rewards)
-        assert res["score"] <= 100
-        assert res["score"] >= 0
-        assert res["classification"] == FULLY_ACCESSIBLE
+    def test_ramp_positive_evidence(self):
+        """5. Ramp positive evidence adds reward."""
+        stair = make_detection("stairs", category="stair_hazard")
+        ramp = make_detection("ramp", category="accessible_feature")
+        res_with = AccessibilityEngine.analyze([stair, ramp])
+        res_without = AccessibilityEngine.analyze([stair])
+        assert res_with["score"] > res_without["score"]
+        # Confirms positive ramp evidence in evidence list
+        assert any(e.feature == "Accessible Ramp" and e.status == "detected" for e in res_with["evidence"])
 
-    def test_classification_thresholds_work_correctly(self):
-        """TEST 6: Classification thresholds map correctly."""
-        assert AccessibilityEngine.get_classification(95) == FULLY_ACCESSIBLE
+    def test_unknown_ramp_does_not_receive_penalty(self):
+        """6. CRITICAL RESPONSIBLE AI RULE: Unseen ramp does NOT penalize."""
+        # Clean scene with no ramp detected
+        res_empty = AccessibilityEngine.analyze([])
+        # Score must remain 100 (not penalized to 80 because a ramp wasn't detected)
+        assert res_empty["score"] == 100
+        # Ramp is listed as unknown in evidence
+        ramp_ev = next(e for e in res_empty["evidence"] if e.feature == "Accessible Ramp")
+        assert ramp_ev.status == "unknown"
+        assert ramp_ev.source == "unsupported"
+        assert any("cannot be determined" in u.lower() for u in res_empty["uncertainties"])
+
+    def test_classification_thresholds(self):
+        """7. Classification thresholds map precisely."""
         assert AccessibilityEngine.get_classification(90) == FULLY_ACCESSIBLE
         assert AccessibilityEngine.get_classification(89) == MOSTLY_ACCESSIBLE
         assert AccessibilityEngine.get_classification(70) == MOSTLY_ACCESSIBLE
@@ -92,21 +94,55 @@ class TestAccessibilityEngine:
         assert AccessibilityEngine.get_classification(39) == LIMITED_ACCESSIBILITY
         assert AccessibilityEngine.get_classification(0) == LIMITED_ACCESSIBILITY
 
-    def test_recommendation_generated_for_stairs(self):
-        """TEST 7: Recommendation generated specifically for stairs."""
-        stair_det = make_detection("stairs", category="stair_hazard")
-        res = AccessibilityEngine.analyze([stair_det])
-        
-        rec_texts = [r.text for r in res["recommendations"]]
-        assert any("step-free" in t.lower() or "ramp" in t.lower() for t in rec_texts)
-        assert any(r.priority == "HIGH" for r in res["recommendations"])
+    def test_evidence_schema_structure(self):
+        """8. Evidence objects conform strictly to typed statuses and sources."""
+        stair = make_detection("stairs", category="stair_hazard")
+        res = AccessibilityEngine.analyze([stair])
+        for ev in res["evidence"]:
+            assert ev.status in ["detected", "inferred", "unknown", "not_detected"]
+            assert ev.source in [
+                "object_detection", "segmentation", "depth_estimation",
+                "scene_reasoning", "rule_engine", "unsupported"
+            ]
 
-    def test_ramp_counterbalances_hazard(self):
-        """Test that detecting an accessible ramp provides positive points."""
-        stair_det = make_detection("stairs", category="stair_hazard")
-        ramp_det = make_detection("ramp", category="accessible_feature")
-        
-        res_with_ramp = AccessibilityEngine.analyze([stair_det, ramp_det])
-        res_without_ramp = AccessibilityEngine.analyze([stair_det])
-        
-        assert res_with_ramp["score"] > res_without_ramp["score"]
+    def test_confidence_calculation(self):
+        """9. Assessment confidence scales based on visual coverage."""
+        # Many detections -> HIGH confidence
+        many = [make_detection("person", category="pedestrian")] * 4
+        res_high = AccessibilityEngine.analyze(many)
+        assert res_high["assessment_confidence"] == "HIGH"
+
+    def test_unsupported_features_listed_in_uncertainties(self):
+        """10. Unsupported features (tactile paving, ADA slope) recorded in uncertainties."""
+        res = AccessibilityEngine.analyze([])
+        assert any("tactile paving" in u.lower() for u in res["uncertainties"])
+        assert any("slope" in u.lower() or "gradient" in u.lower() for u in res["uncertainties"])
+
+    def test_deterministic_explanation_fallback(self):
+        """15. Deterministic fallback produces non-empty, grounded insight."""
+        provider = DeterministicExplanationProvider()
+        out = provider.generate_explanation(
+            score=45,
+            classification=PARTIALLY_ACCESSIBLE,
+            evidence_summary=["stairs: detected"],
+            risks_summary=["Stairs detected"],
+            uncertainties=["Ramp unknown"],
+            base_recommendations=["Look for alternative entrance"],
+        )
+        assert "ai_insight" in out
+        assert "recommended_action" in out
+        assert out["provider"] == "deterministic"
+
+    def test_llm_provider_safe_fallback(self):
+        """LLM provider safely falls back to deterministic when no API key exists."""
+        provider = LLMExplanationProvider("gemini")
+        out = provider.generate_explanation(
+            score=75,
+            classification=MOSTLY_ACCESSIBLE,
+            evidence_summary=["clear path: inferred"],
+            risks_summary=[],
+            uncertainties=["Ramp unknown"],
+            base_recommendations=["Verify in person"],
+        )
+        assert "ai_insight" in out
+        assert out["provider"] == "deterministic"

@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple, Any, Optional
 
 from app.schemas.analysis import (
     Detection,
+    Evidence,
     Risk,
     Recommendation,
     ScoreBreakdown,
@@ -11,6 +12,7 @@ from app.schemas.analysis import (
     PARTIALLY_ACCESSIBLE,
     LIMITED_ACCESSIBILITY,
     AccessibilityClassification,
+    AssessmentConfidence,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,15 +22,15 @@ THRESHOLD_FULLY_ACCESSIBLE = 90
 THRESHOLD_MOSTLY_ACCESSIBLE = 70
 THRESHOLD_PARTIALLY_ACCESSIBLE = 40
 
-# Penalty and Reward Constants
+# Evidence-Aware Penalty and Reward Constants
 PENALTY_STAIRS = 25
 PENALTY_OBSTACLE = 10
 PENALTY_VEHICLE = 15
-PENALTY_CROWD = 5  # Applied if dense crowd (> 4 persons)
+PENALTY_CROWD = 5
 REWARD_RAMP = 15
 REWARD_CLEAR_PATH = 10
 
-# Maximum cumulative penalties per category to avoid score obliteration from repeat detections
+# Maximum cumulative caps
 MAX_STAIRS_PENALTY = 50
 MAX_OBSTACLE_PENALTY = 30
 MAX_VEHICLE_PENALTY = 30
@@ -36,9 +38,9 @@ MAX_VEHICLE_PENALTY = 30
 
 class AccessibilityEngine:
     """
-    Deterministic accessibility rules and scoring engine.
-    Computes an accessibility score (0-100), classifies accessibility state,
-    and produces structured risks and actionable recommendations.
+    Evidence-aware deterministic accessibility rules and scoring engine.
+    Computes an accessibility score (0-100), evaluates verification confidence,
+    separates observed evidence from unknowns, and generates responsible recommendations.
     """
 
     @classmethod
@@ -60,14 +62,8 @@ class AccessibilityEngine:
         image_dimensions: Optional[Tuple[int, int]] = None,
     ) -> Dict[str, Any]:
         """
-        Evaluates detected objects and produces accessibility assessment.
-        
-        Args:
-            detections: List of Detection objects from the detector service.
-            image_dimensions: Optional (width, height) tuple to evaluate spatial positioning.
-            
-        Returns:
-            Dict containing score, classification, risks, recommendations, summary, and breakdown.
+        Evaluates detected visual entities with evidence-aware rules.
+        Does NOT penalize for unobserved features (absence of evidence is not evidence of absence).
         """
         base_score = 100
         penalties = 0
@@ -75,146 +71,291 @@ class AccessibilityEngine:
         factors: List[str] = []
         risks: List[Risk] = []
         recommendations: List[Recommendation] = []
+        evidence_list: List[Evidence] = []
+        uncertainties: List[str] = []
 
-        # Count detected items by category and name
-        stairs_count = 0
-        obstacle_count = 0
-        vehicle_count = 0
-        person_count = 0
-        ramp_count = 0
-        obstacle_names: List[str] = []
-        vehicle_names: List[str] = []
+        # Count detected items
+        stairs_instances: List[Detection] = []
+        obstacle_instances: List[Detection] = []
+        vehicle_instances: List[Detection] = []
+        pedestrian_instances: List[Detection] = []
+        ramp_instances: List[Detection] = []
 
         for d in detections:
             cname = d.class_name.lower()
             cat = d.category
 
             if cat == "stair_hazard" or "stair" in cname or "step" in cname:
-                stairs_count += 1
+                stairs_instances.append(d)
             elif cat == "accessible_feature" or "ramp" in cname:
-                ramp_count += 1
+                ramp_instances.append(d)
             elif cat == "vehicle":
-                vehicle_count += 1
-                vehicle_names.append(cname)
+                vehicle_instances.append(d)
             elif cat == "pedestrian":
-                person_count += 1
+                pedestrian_instances.append(d)
             elif cat == "obstacle":
-                obstacle_count += 1
-                obstacle_names.append(cname)
+                obstacle_instances.append(d)
 
-        # 1. Rule: Stairs Hazard
-        if stairs_count > 0:
-            applied_penalty = min(stairs_count * PENALTY_STAIRS, MAX_STAIRS_PENALTY)
+        # -------------------------------------------------------------
+        # 1. POSITIVE BARRIER EVIDENCE: STAIRS
+        # -------------------------------------------------------------
+        if stairs_instances:
+            stair_count = len(stairs_instances)
+            avg_conf = sum(s.confidence for s in stairs_instances) / stair_count
+            applied_penalty = min(stair_count * PENALTY_STAIRS, MAX_STAIRS_PENALTY)
             penalties += applied_penalty
-            factors.append(f"-{applied_penalty} pts: {stairs_count} stair barrier(s) detected")
-            
+            factors.append(f"-{applied_penalty} pts: {stair_count} stair barrier instance(s) detected")
+
+            evidence_list.append(
+                Evidence(
+                    feature="Stairs / Steps",
+                    status="detected",
+                    source="object_detection",
+                    confidence=round(avg_conf, 2),
+                    description=f"{stair_count} instance(s) of stairs observed in visible path.",
+                )
+            )
             risks.append(
                 Risk(
                     type="STAIRS_BARRIER",
                     severity="HIGH",
                     description=(
-                        f"Stairs detected in the analyzed environment ({stairs_count} visual instance). "
-                        "This presents a primary barrier for wheelchair users, strollers, and persons with mobility impairments."
+                        "Stairs were detected near the visible pathway and may present a significant "
+                        "barrier for wheelchair users, strollers, and persons with mobility limitations."
                     ),
                 )
             )
             recommendations.append(
                 Recommendation(
                     priority="HIGH",
-                    text="Look for an alternative entrance or pathway with a dedicated ramp or step-free access."
+                    text="Look for a step-free entrance or verify ramp access before arrival.",
+                )
+            )
+        else:
+            evidence_list.append(
+                Evidence(
+                    feature="Stairs / Steps",
+                    status="not_detected",
+                    source="object_detection",
+                    confidence=None,
+                    description="No stair barriers detected in the visible camera perspective.",
                 )
             )
 
-        # 2. Rule: Obstacles on Pathway
-        if obstacle_count > 0:
-            applied_penalty = min(obstacle_count * PENALTY_OBSTACLE, MAX_OBSTACLE_PENALTY)
+        # -------------------------------------------------------------
+        # 2. POSITIVE BARRIER EVIDENCE: OBSTACLES
+        # -------------------------------------------------------------
+        if obstacle_instances:
+            obs_count = len(obstacle_instances)
+            obs_names = sorted(list({o.class_name for o in obstacle_instances}))
+            avg_conf = sum(o.confidence for o in obstacle_instances) / obs_count
+            applied_penalty = min(obs_count * PENALTY_OBSTACLE, MAX_OBSTACLE_PENALTY)
             penalties += applied_penalty
-            unique_obstacles = ", ".join(sorted(set(obstacle_names)))
-            factors.append(f"-{applied_penalty} pts: Pathway obstacle(s) detected ({unique_obstacles})")
-            
+            obs_str = ", ".join(obs_names)
+            factors.append(f"-{applied_penalty} pts: Pathway obstacle(s) detected ({obs_str})")
+
+            evidence_list.append(
+                Evidence(
+                    feature="Pathway Obstacles",
+                    status="detected",
+                    source="object_detection",
+                    confidence=round(avg_conf, 2),
+                    description=f"Objects detected in visible scene ({obs_str}).",
+                )
+            )
             risks.append(
                 Risk(
                     type="PATHWAY_OBSTACLE",
                     severity="MEDIUM",
-                    description=(
-                        f"Potential pathway obstruction detected ({unique_obstacles}). "
-                        "May narrow navigable width below the standard 36-inch clearance required for mobility devices."
-                    ),
+                    description=f"Potential pathway obstruction detected ({obs_str}). May restrict clear passage width.",
                 )
             )
             recommendations.append(
                 Recommendation(
                     priority="MEDIUM",
-                    text=f"Inspect the pathway for a clear route around detected obstacles ({unique_obstacles})."
+                    text=f"Inspect pathway around detected items ({obs_str}) for sufficient navigation clearance.",
+                )
+            )
+        else:
+            evidence_list.append(
+                Evidence(
+                    feature="Pathway Obstacles",
+                    status="not_detected",
+                    source="object_detection",
+                    confidence=None,
+                    description="No major physical obstacles detected in the visible pathway.",
                 )
             )
 
-        # 3. Rule: Vehicles Near Pathway
-        if vehicle_count > 0:
-            applied_penalty = min(vehicle_count * PENALTY_VEHICLE, MAX_VEHICLE_PENALTY)
+        # -------------------------------------------------------------
+        # 3. POSITIVE BARRIER EVIDENCE: VEHICLES
+        # -------------------------------------------------------------
+        if vehicle_instances:
+            veh_count = len(vehicle_instances)
+            veh_names = sorted(list({v.class_name for v in vehicle_instances}))
+            avg_conf = sum(v.confidence for v in vehicle_instances) / veh_count
+            applied_penalty = min(veh_count * PENALTY_VEHICLE, MAX_VEHICLE_PENALTY)
             penalties += applied_penalty
-            unique_vehicles = ", ".join(sorted(set(vehicle_names)))
-            factors.append(f"-{applied_penalty} pts: Vehicle(s) detected near pathway ({unique_vehicles})")
-            
+            veh_str = ", ".join(veh_names)
+            factors.append(f"-{applied_penalty} pts: Vehicle(s) detected near path ({veh_str})")
+
+            evidence_list.append(
+                Evidence(
+                    feature="Vehicles Near Pathway",
+                    status="detected",
+                    source="object_detection",
+                    confidence=round(avg_conf, 2),
+                    description=f"Vehicles ({veh_str}) observed in vicinity of pedestrian access.",
+                )
+            )
             risks.append(
                 Risk(
                     type="VEHICLE_PROXIMITY",
                     severity="MEDIUM",
                     description=(
-                        f"Vehicle ({unique_vehicles}) detected in the scene. "
-                        "Additional spatial attention required to verify curb ramps or sidewalk access are not blocked."
+                        f"Vehicle ({veh_str}) detected in the scene. "
+                        "Verify that drop-off zones or curb transitions are not obstructed."
                     ),
                 )
             )
             recommendations.append(
                 Recommendation(
                     priority="LOW",
-                    text="Exercise caution around vehicular areas and confirm drop-off or curb cut transitions are clear."
+                    text="Exercise caution around vehicular areas and confirm drop-off zone or curb cut is clear.",
                 )
             )
 
-        # 4. Rule: Crowd Density
+        # -------------------------------------------------------------
+        # 4. PEDESTRIAN CONGESTION
+        # -------------------------------------------------------------
+        person_count = len(pedestrian_instances)
         if person_count > 4:
             penalties += PENALTY_CROWD
             factors.append(f"-{PENALTY_CROWD} pts: High pedestrian density ({person_count} persons detected)")
+            evidence_list.append(
+                Evidence(
+                    feature="Crowd Congestion",
+                    status="detected",
+                    source="object_detection",
+                    confidence=0.85,
+                    description=f"Pedestrian volume ({person_count} persons) may reduce navigation speed.",
+                )
+            )
             risks.append(
                 Risk(
                     type="HIGH_PEDESTRIAN_DENSITY",
                     severity="LOW",
-                    description=f"High pedestrian volume ({person_count} persons) may reduce navigation speed and ease of movement.",
+                    description="High pedestrian volume may restrict comfortable wheelchair or mobility device transit.",
                 )
             )
 
-        # 5. Rule: Accessible Ramp Detected
-        if ramp_count > 0:
+        # -------------------------------------------------------------
+        # 5. POSITIVE ACCESSIBLE FEATURE: RAMP
+        # -------------------------------------------------------------
+        if ramp_instances:
             rewards += REWARD_RAMP
-            factors.append(f"+{REWARD_RAMP} pts: Accessible ramp identified")
+            factors.append(f"+{REWARD_RAMP} pts: Accessible ramp positively identified")
+            evidence_list.append(
+                Evidence(
+                    feature="Accessible Ramp",
+                    status="detected",
+                    source="object_detection",
+                    confidence=0.90,
+                    description="Step-free ramp transition positively identified in the visible frame.",
+                )
+            )
             recommendations.append(
                 Recommendation(
                     priority="LOW",
-                    text="Utilize the identified ramp for step-free grade transition."
+                    text="Utilize the identified ramp for step-free grade transition.",
                 )
             )
+        else:
+            # RESPONSIBLE AI RULE: No penalty for unobserved ramp!
+            evidence_list.append(
+                Evidence(
+                    feature="Accessible Ramp",
+                    status="unknown",
+                    source="unsupported",
+                    confidence=None,
+                    description="No ramp detected in visible area. General vision model cannot rule out a ramp outside camera frame.",
+                )
+            )
+            uncertainties.append("Ramp availability cannot be determined from this single camera perspective.")
 
-        # 6. Rule: Clear Pathway (no major barriers detected)
-        if stairs_count == 0 and obstacle_count == 0 and vehicle_count == 0:
+        # -------------------------------------------------------------
+        # 6. DOMAIN UNKNOWNS & SCOPE LIMITATIONS
+        # -------------------------------------------------------------
+        evidence_list.append(
+            Evidence(
+                feature="Tactile Paving",
+                status="unknown",
+                source="unsupported",
+                confidence=None,
+                description="Visual indicators for visually impaired guidance are not classified by current model.",
+            )
+        )
+        uncertainties.append("Tactile paving and micro-surface defects (cracks, potholes) require dedicated on-site verification.")
+
+        evidence_list.append(
+            Evidence(
+                feature="Ramp Slope / ADA Gradient",
+                status="unknown",
+                source="depth_estimation",
+                confidence=None,
+                description="Metric slope gradient (1:12 ADA standard) cannot be computed without stereo depth or LiDAR.",
+            )
+        )
+        uncertainties.append("Ramp slope/incline gradient angles and door width measurements cannot be metrically certified from monocular 2D imagery.")
+
+        # -------------------------------------------------------------
+        # 7. INFERRED CLEAR PATHWAY
+        # -------------------------------------------------------------
+        if not stairs_instances and not obstacle_instances and not vehicle_instances:
             rewards += REWARD_CLEAR_PATH
             factors.append(f"+{REWARD_CLEAR_PATH} pts: No immediate physical barriers detected in visual field")
+            evidence_list.append(
+                Evidence(
+                    feature="Clear Navigable Pathway",
+                    status="inferred",
+                    source="rule_engine",
+                    confidence=0.80,
+                    description="Pathway appears free of major step barriers or ground obstructions in visible area.",
+                )
+            )
             recommendations.append(
                 Recommendation(
                     priority="LOW",
-                    text="No major accessibility barriers were detected in this image. Verify conditions in person before relying on this assessment."
+                    text="No major visual barriers were detected in this image. Verify conditions in person before relying on this assessment.",
                 )
             )
 
-        # Compute bounded score [0, 100]
+        # Bounded score calculation
         raw_score = base_score - penalties + rewards
         final_score = max(0, min(100, raw_score))
-
         classification = cls.get_classification(final_score)
 
-        # Human-readable summary
-        summary = cls._generate_summary(final_score, classification, stairs_count, ramp_count, obstacle_count)
+        # -------------------------------------------------------------
+        # 8. ASSESSMENT CONFIDENCE CALCULATION
+        # -------------------------------------------------------------
+        # High confidence if significant visual features were detected or clear field confirmed
+        total_detections = len(detections)
+        if total_detections >= 3 or stairs_instances:
+            assessment_confidence: AssessmentConfidence = "HIGH"
+        elif total_detections >= 1 or not stairs_instances:
+            assessment_confidence = "MEDIUM"
+        else:
+            assessment_confidence = "LOW"
+
+        # Summary Generation
+        summary = cls._generate_summary(
+            final_score,
+            classification,
+            len(stairs_instances),
+            len(ramp_instances),
+            len(obstacle_instances),
+            assessment_confidence,
+        )
 
         breakdown = ScoreBreakdown(
             base_score=base_score,
@@ -226,8 +367,12 @@ class AccessibilityEngine:
         return {
             "score": final_score,
             "classification": classification,
+            "assessment_confidence": assessment_confidence,
+            "assessment_scope": "visible_area_only",
+            "evidence": evidence_list,
             "risks": risks,
             "recommendations": recommendations,
+            "uncertainties": uncertainties,
             "summary": summary,
             "breakdown": breakdown,
         }
@@ -236,11 +381,12 @@ class AccessibilityEngine:
     def _generate_summary(
         score: int,
         classification: AccessibilityClassification,
-        stairs: int,
-        ramps: int,
-        obstacles: int,
+        stairs_count: int,
+        ramps_count: int,
+        obstacles_count: int,
+        confidence: AssessmentConfidence,
     ) -> str:
-        """Constructs an objective, factual summary of visual accessibility."""
+        """Constructs an evidence-qualified summary of physical accessibility."""
         labels = {
             FULLY_ACCESSIBLE: "Fully Accessible",
             MOSTLY_ACCESSIBLE: "Mostly Accessible",
@@ -249,23 +395,20 @@ class AccessibilityEngine:
         }
         human_class = labels.get(classification, classification)
 
-        if stairs > 0 and ramps == 0:
+        if stairs_count > 0:
             return (
-                f"Evaluated as {human_class} ({score}/100). "
-                "Main access route contains stair barriers with no visible ramp. Step-free entry requires an alternate route."
+                f"Evaluated as {human_class} ({score}/100, {confidence} confidence). "
+                f"Stairs were detected near the visible pathway and may present a mobility barrier. "
+                "Ramp availability cannot be determined from this single viewpoint."
             )
-        elif stairs > 0 and ramps > 0:
+        elif obstacles_count > 0:
             return (
-                f"Evaluated as {human_class} ({score}/100). "
-                "Stairs are present, but an accessible ramp was also detected to support grade changes."
-            )
-        elif obstacles > 0:
-            return (
-                f"Evaluated as {human_class} ({score}/100). "
-                "Step-free path observed, but potential pathway obstacles may impede wheelchair clearance."
+                f"Evaluated as {human_class} ({score}/100, {confidence} confidence). "
+                "No step barriers detected, but potential pathway obstacles may reduce navigable clearance for mobility devices."
             )
         else:
             return (
-                f"Evaluated as {human_class} ({score}/100). "
-                "Path appears clear of major obstructions and step barriers based on the visible field."
+                f"Evaluated as {human_class} ({score}/100, {confidence} confidence). "
+                "No major visual barriers were detected in the analyzed area. "
+                "Visual analysis is limited to the camera field of view."
             )

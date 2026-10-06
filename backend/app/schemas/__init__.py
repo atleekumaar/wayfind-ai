@@ -1,5 +1,8 @@
 from .analysis import (
     Detection,
+    Evidence,
+    EvidenceStatus,
+    EvidenceSource,
     Risk,
     Recommendation,
     ScoreBreakdown,
@@ -11,10 +14,14 @@ from .analysis import (
     AccessibilityClassification,
     RiskSeverity,
     RecommendationPriority,
+    AssessmentConfidence,
 )
 
 __all__ = [
     "Detection",
+    "Evidence",
+    "EvidenceStatus",
+    "EvidenceSource",
     "Risk",
     "Recommendation",
     "ScoreBreakdown",
@@ -26,4 +33,5 @@ __all__ = [
     "AccessibilityClassification",
     "RiskSeverity",
     "RecommendationPriority",
+    "AssessmentConfidence",
 ]
