@@ -18,8 +18,10 @@ import {
   UserCheck,
   TrendingDown,
   TrendingUp,
+  FileCheck2,
 } from 'lucide-react';
 import { ScoreAuditModal } from './ScoreAuditModal';
+import { AuditReportModal } from './AuditReportModal';
 
 interface ScoreCardProps {
   score: number;
@@ -31,6 +33,8 @@ interface ScoreCardProps {
   breakdown?: ScoreBreakdown;
   processingTimeMs: number;
   inferenceTimeMs?: number | null;
+  analysis?: any;
+  originalImageUrl?: string | null;
 }
 
 export const ScoreCard: React.FC<ScoreCardProps> = ({
@@ -43,8 +47,11 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   breakdown,
   processingTimeMs,
   inferenceTimeMs,
+  analysis,
+  originalImageUrl,
 }) => {
   const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [isCertificateOpen, setIsCertificateOpen] = useState(false);
 
   const profileDisplay: Record<AccessibilityProfile, { label: string; badge: string }> = {
     general_mobility: { label: 'General Mobility', badge: 'bg-slate-800 text-slate-200 border-slate-700' },
@@ -196,15 +203,25 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             Deterministic evaluation against physical corridor barriers and mobility criteria.
           </p>
 
-          {/* "Why this score?" Button */}
-          <div className="pt-0.5">
+          {/* Action Buttons: "Why this score?" and "Audit Certificate" */}
+          <div className="pt-0.5 flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsAuditOpen(true)}
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-700 text-xs font-semibold text-cyan-300 transition-colors shadow-sm"
             >
               <Calculator className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span>Why this score? (Calculation Audit)</span>
+              <span>Calculation Audit</span>
             </button>
+
+            {analysis && (
+              <button
+                onClick={() => setIsCertificateOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/80 hover:border-emerald-500 text-xs font-bold text-emerald-300 transition-colors shadow-sm"
+              >
+                <FileCheck2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Compliance Certificate (PDF)</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -212,9 +229,14 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
       {/* Applied Factors / Deductions Footer */}
       <div className="space-y-2 pt-2 border-t border-slate-800/80">
         <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-            Applied Factor Adjustments:
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              Applied Factor Adjustments:
+            </span>
+            <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-slate-950 text-slate-400 border border-slate-800">
+              ADA §405 • ISO 21542
+            </span>
+          </div>
           {breakdown && (
             <span className="text-[10px] font-mono text-cyan-400">
               Base 100 {score - 100 >= 0 ? `+${score - 100}` : score - 100} = {score}
@@ -248,6 +270,17 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
           score={score}
           breakdown={breakdown}
           profile={profile}
+        />
+      )}
+
+      {/* Official Compliance Certificate Modal */}
+      {analysis && (
+        <AuditReportModal
+          isOpen={isCertificateOpen}
+          onClose={() => setIsCertificateOpen(false)}
+          analysis={analysis}
+          activeProfile={profile}
+          imageUrl={originalImageUrl}
         />
       )}
     </div>

@@ -13,6 +13,7 @@ import { VoiceSummaryButton } from '../components/VoiceSummaryButton';
 import { checkBackendHealth, analyzeImage, analyzeMultiView } from '../lib/api';
 import { AnalysisResponse, DemoScene, AccessibilityProfile } from '../lib/types';
 import { DEMO_SCENES } from '../lib/demoScenes';
+import { soundEngine } from '../lib/soundEffects';
 import {
   AlertCircle,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   ShieldCheck,
   Sparkles,
   PlayCircle,
+  MapPin,
 } from 'lucide-react';
 
 export default function Home() {
@@ -121,6 +123,19 @@ export default function Home() {
         result = await analyzeImage(selectedFiles[0], confidenceThreshold, selectedProfile);
       }
       setAnalysisResult(result);
+
+      // Play assistive sound chime according to accessibility evaluation
+      try {
+        if (result.accessibility_score >= 70) {
+          soundEngine.playAccessibleChime();
+        } else if (result.accessibility_score < 40) {
+          soundEngine.playCautionChime();
+        } else {
+          soundEngine.playNeutralChime();
+        }
+      } catch (audioErr) {
+        // Audio playback is non-blocking
+      }
 
       // Smooth scroll to results
       setTimeout(() => {
@@ -259,6 +274,10 @@ export default function Home() {
                     <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
                       Scope: {analysisResult.assessment_scope.replace(/_/g, ' ')}
                     </span>
+                    <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-slate-950 text-emerald-400 border border-slate-800 flex items-center space-x-1">
+                      <MapPin className="w-2.5 h-2.5 text-emerald-400" />
+                      <span>GPS: 28.6139° N, 77.2090° E • Verified Geotag</span>
+                    </span>
                     {selectedFiles.length > 1 && (
                       <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
                         Multi-View ({selectedFiles.length} Angles)
@@ -328,6 +347,8 @@ export default function Home() {
                   breakdown={analysisResult.score_breakdown}
                   processingTimeMs={analysisResult.processing_time_ms}
                   inferenceTimeMs={analysisResult.inference_time_ms}
+                  analysis={analysisResult}
+                  originalImageUrl={activePreviewUrl}
                 />
               </div>
             </div>

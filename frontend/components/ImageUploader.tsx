@@ -9,13 +9,13 @@ import {
   PlayCircle,
   CheckCircle2,
   Loader2,
-  Layers,
   X,
   UserCheck,
-  ShieldAlert,
+  Camera,
 } from 'lucide-react';
 import { DEMO_SCENES } from '../lib/demoScenes';
 import { DemoScene, AccessibilityProfile } from '../lib/types';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface ImageUploaderProps {
   onFilesSelected: (files: File[], isDemo?: boolean, demoInfo?: DemoScene) => void;
@@ -47,6 +47,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const profiles: { id: AccessibilityProfile; label: string; desc: string }[] = [
     { id: 'general_mobility', label: 'General', desc: 'Standard pedestrian corridor analysis' },
@@ -120,14 +121,24 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             Capture or Select Environment
           </h3>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Upload 1 to 3 street camera angles or evaluate curated benchmark scenarios
+            Upload 1 to 3 street camera angles, snap live photo, or evaluate benchmark scenarios
           </p>
         </div>
 
-        {/* Demo Scenarios */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Demo Scenarios & Live Camera Trigger */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsCameraOpen(true)}
+            disabled={isAnalyzing}
+            className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 transition flex items-center space-x-1.5 shadow-sm"
+          >
+            <Camera className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Live Camera</span>
+          </button>
+
           <span className="text-[10px] uppercase font-bold text-slate-500 mr-1 hidden md:inline">
-            Curated Demos:
+            Demos:
           </span>
           {DEMO_SCENES.map((scene) => (
             <button
@@ -217,7 +228,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         </div>
       )}
 
-      {/* Upload Drop Zone */}
+      {/* Upload Drop Zone & Live Camera Quick Button */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -250,7 +261,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           className="hidden"
         />
 
-        <div className="flex flex-col items-center justify-center space-y-2">
+        <div className="flex flex-col items-center justify-center space-y-2.5">
           <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 shadow-inner">
             <UploadCloud className="w-6 h-6" />
           </div>
@@ -263,6 +274,20 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             <p className="text-xs text-slate-400 mt-1">
               Supports 1 to 3 multi-view angles (JPEG, PNG, WebP up to 10MB each)
             </p>
+          </div>
+
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsCameraOpen(true);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 text-xs font-semibold inline-flex items-center space-x-1.5 transition"
+            >
+              <Camera className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Or Snap Live Photo with Camera</span>
+            </button>
           </div>
         </div>
       </div>
@@ -406,6 +431,15 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Live Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onPhotoCaptured={(file) => {
+          onFilesSelected([file], false);
+        }}
+      />
     </div>
   );
 };
