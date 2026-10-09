@@ -436,6 +436,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
       <CameraCaptureModal
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
+        profile={selectedProfile}
+        confidenceThreshold={confidenceThreshold}
         onPhotoCaptured={(file) => {
           onFilesSelected([file], false);
         }}
