@@ -1,6 +1,7 @@
 export type RiskSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type RecommendationPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type AssessmentConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+export type EvidenceSufficiency = 'sufficient_evidence' | 'limited_evidence' | 'insufficient_evidence' | 'analysis_failed';
 export type EvidenceStatus = 'detected' | 'inferred' | 'unknown' | 'not_detected';
 export type EvidenceSource =
   | 'object_detection'
@@ -25,10 +26,16 @@ export type AccessibilityProfile =
   | 'low_vision';
 
 export interface Detection {
+  id?: string;
   class_name: string;
   confidence: number;
   bbox: [number, number, number, number];
   category: string;
+  source_model?: string;
+  is_model_supported?: boolean;
+  detection_status?: 'detected' | 'inferred' | 'unknown' | 'unsupported';
+  limitations?: string | null;
+  viewpoint_index?: number;
 }
 
 export interface SpatialAssessment {
@@ -68,6 +75,9 @@ export interface ScoreBreakdownFactor {
   status: EvidenceStatus;
   source: string;
   confidence?: number | null;
+  detection_id?: string | null;
+  rule_name?: string | null;
+  spatial_relevance?: string | null;
 }
 
 export interface ScoreBreakdown {
@@ -85,6 +95,7 @@ export interface AnalysisResponse {
   classification: AccessibilityClassification;
   assessment_confidence: AssessmentConfidence;
   vision_confidence?: number | null;
+  evidence_sufficiency?: EvidenceSufficiency;
   assessment_scope: string;
   profile: AccessibilityProfile;
   image_source_label: string;

@@ -17,6 +17,7 @@ AccessibilityClassification = Literal[
 RiskSeverity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 RecommendationPriority = Literal["LOW", "MEDIUM", "HIGH"]
 AssessmentConfidence = Literal["HIGH", "MEDIUM", "LOW"]
+EvidenceSufficiency = Literal["sufficient_evidence", "limited_evidence", "insufficient_evidence", "analysis_failed"]
 
 EvidenceStatus = Literal["detected", "inferred", "unknown", "not_detected"]
 EvidenceSource = Literal[
@@ -39,10 +40,16 @@ AccessibilityProfile = Literal[
 
 
 class Detection(BaseModel):
+    id: Optional[str] = Field(None, description="Unique detection instance ID for score traceability")
     class_name: str = Field(..., description="Name of the detected object class")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Detection confidence score")
     bbox: List[float] = Field(..., description="Bounding box coordinates [x1, y1, x2, y2]")
     category: Optional[str] = Field("general", description="Semantic category (barrier, mobility_aid, vehicle, pedestrian, etc.)")
+    source_model: Optional[str] = Field("yolov8n-coco", description="Origin model checkpoint")
+    is_model_supported: bool = Field(True, description="Whether the class is native to the active model checkpoint")
+    detection_status: Literal["detected", "inferred", "unknown", "unsupported"] = Field("detected", description="Detection status")
+    limitations: Optional[str] = Field(None, description="Model or viewpoint limitations for this detection")
+    viewpoint_index: int = Field(0, description="Viewpoint index for multi-view traceability")
 
 
 class SpatialAssessment(BaseModel):
@@ -88,6 +95,9 @@ class ScoreBreakdownFactor(BaseModel):
     status: EvidenceStatus = Field("detected", description="Underlying evidence status")
     source: str = Field("rule_engine", description="Source of factor derivation")
     confidence: Optional[float] = Field(None, description="Factor confidence if applicable")
+    detection_id: Optional[str] = Field(None, description="Linked detection instance ID for visual traceability")
+    rule_name: Optional[str] = Field(None, description="Specific deterministic rule key applied")
+    spatial_relevance: Optional[str] = Field(None, description="Corridor relevance tier (corridor_obstruction, boundary, contextual)")
 
 
 class ScoreBreakdown(BaseModel):
@@ -105,6 +115,7 @@ class AnalysisResponse(BaseModel):
     classification: AccessibilityClassification
     assessment_confidence: AssessmentConfidence = Field("MEDIUM", description="Confidence in assessment based on visual coverage")
     vision_confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Average detector confidence of positive visual detections")
+    evidence_sufficiency: EvidenceSufficiency = Field("sufficient_evidence", description="Evidence sufficiency evaluation tier")
     assessment_scope: str = Field("visible_area_only", description="Scope of visual assessment")
     profile: AccessibilityProfile = Field("general_mobility", description="Active accessibility evaluation profile")
     image_source_label: str = Field("USER_IMAGE", description="Label: USER_IMAGE or CURATED_DEMO_SCENE_SYNTHETIC")

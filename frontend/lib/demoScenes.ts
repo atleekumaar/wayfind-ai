@@ -133,15 +133,15 @@ export const DEMO_SCENES: DemoScene[] = [
     description:
       'A synthetic test environment modeling a modern medical center approach with wide smooth paving, automatic sliding doors, and zero stairs.',
     expectedTier: 'Fully Accessible',
-    expectedScoreRange: '95–100 / 100',
+    expectedScoreRange: '100 / 100',
     expectedEvidence: [
-      'Inferred clear navigation corridor (+10 pts reward)',
+      'No supported barrier objects detected in visible corridor (0 pts penalty)',
       'Zero step barriers detected',
-      'Wide entrance corridor',
+      'Wide entrance corridor visible',
     ],
-    barrierSummary: 'Zero step barriers; Clear path verified (+10 pts reward); Clean approach.',
+    barrierSummary: 'Zero step barriers; No corridor obstacles detected in visible frame.',
     whyItMatters:
-      'Shows how confirmed clear pathways receive positive rewards and achieve a maximum 100-point rating.',
+      'Shows how an unobstructed corridor retains the baseline 100-point score without fabricating unearned rewards for unobservable features.',
     generateBlob: () =>
       createSceneFile('demo_accessible_plaza.jpg', (ctx, w, h) => {
         const facadeGrad = ctx.createLinearGradient(0, 0, 0, 200);

@@ -125,20 +125,28 @@ class Detector:
             if boxes is None or len(boxes) == 0:
                 return detections
 
-            for box in boxes:
+            supported_classes = set(self.get_supported_classes())
+            for idx, box in enumerate(boxes):
                 xyxy = box.xyxy[0].tolist()
                 confidence = float(box.conf[0])
                 cls_id = int(box.cls[0])
                 class_name = self.model.names.get(cls_id, f"class_{cls_id}").lower()
                 
                 category = CLASS_CATEGORIES.get(class_name, "general")
+                is_supported = class_name in supported_classes
+                det_id = f"det_{idx+1}_{class_name[:6]}"
 
                 detections.append(
                     Detection(
+                        id=det_id,
                         class_name=class_name,
                         confidence=round(confidence, 3),
                         bbox=[round(coord, 2) for coord in xyxy],
-                        category=category
+                        category=category,
+                        source_model=self.model_path if isinstance(self.model_path, str) else "yolov8n",
+                        is_model_supported=is_supported,
+                        detection_status="detected" if is_supported else "unsupported",
+                        limitations="Standard 2D bounding box; metric physical clearance requires stereo depth" if not is_supported else None,
                     )
                 )
 

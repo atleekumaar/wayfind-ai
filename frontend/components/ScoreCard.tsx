@@ -216,10 +216,10 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             {analysis && (
               <button
                 onClick={() => setIsCertificateOpen(true)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/80 hover:border-emerald-500 text-xs font-bold text-emerald-300 transition-colors shadow-sm"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-700/80 hover:border-cyan-500 text-xs font-bold text-cyan-300 transition-colors shadow-sm"
               >
-                <FileCheck2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Compliance Certificate (PDF)</span>
+                <FileCheck2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>Assessment Report (PDF)</span>
               </button>
             )}
           </div>
@@ -234,7 +234,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
               Applied Factor Adjustments:
             </span>
             <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-slate-950 text-slate-400 border border-slate-800">
-              ADA §405 • ISO 21542
+              Evidence Audit • Bounded [0–100]
             </span>
           </div>
           {breakdown && (

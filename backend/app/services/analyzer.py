@@ -84,6 +84,7 @@ class AccessibilityAnalyzer:
             classification=eval_result["classification"],
             assessment_confidence=eval_result["assessment_confidence"],
             vision_confidence=eval_result["vision_confidence"],
+            evidence_sufficiency=eval_result.get("evidence_sufficiency", "sufficient_evidence"),
             assessment_scope=eval_result["assessment_scope"],
             profile=profile,
             image_source_label=image_source_label,

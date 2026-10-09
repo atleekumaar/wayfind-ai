@@ -191,6 +191,9 @@ export const VisualComparison: React.FC<VisualComparisonProps> = ({
                   det.category
                 )}`}
               >
+                {det.id && (
+                  <span className="text-[9px] font-mono text-cyan-300 opacity-90">{det.id}</span>
+                )}
                 <span className="capitalize">{det.class_name.replace(/_/g, ' ')}</span>
                 <span className="text-[10px] font-mono opacity-80">
                   {Math.round(det.confidence * 100)}%

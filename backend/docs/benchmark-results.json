@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-10-08T22:19:46Z",
+  "engine_version": "1.0.0",
+  "invariants_tested": 5,
+  "invariants_passed": 5,
+  "scenarios_evaluated": 0,
+  "metrics": {},
+  "details": [
+    {
+      "test": "empty_scene_bounded_and_evidence_qualified",
+      "status": "PASSED"
+    },
+    {
+      "test": "contextual_outside_corridor_zero_penalty",
+      "status": "PASSED"
+    },
+    {
+      "test": "corridor_obstacle_penalty_math",
+      "status": "PASSED"
+    },
+    {
+      "test": "score_clamping_non_negative",
+      "status": "PASSED"
+    },
+    {
+      "test": "profile_sensitivity_wheelchair_gt_general",
+      "status": "PASSED"
+    }
+  ],
+  "elapsed_seconds": 0.002,
+  "pass_rate_percent": 100.0
+}

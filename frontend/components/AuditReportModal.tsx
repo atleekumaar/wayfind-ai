@@ -8,10 +8,10 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
-  QrCode,
   Award,
   Globe,
   Compass,
+  AlertOctagon,
 } from 'lucide-react';
 import { AnalysisResponse, AccessibilityProfile } from '../lib/types';
 
@@ -46,13 +46,15 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
     }
   };
 
-  // Generate deterministic audit certificate hash
-  const pseudoHash = `0x${Array.from(analysis.analysis_id + 'wayfind-verified')
-    .map((c) => c.charCodeAt(0).toString(16))
-    .join('')
-    .slice(0, 32)}`;
+  // Generate genuine assessment audit reference
+  const reportRef = `WFA-${analysis.analysis_id.slice(0, 8).toUpperCase()}`;
 
-  const isCompliant = analysis.accessibility_score >= 70;
+  // Honest score categorization
+  const getScoreTierText = (score: number) => {
+    if (score >= 70) return 'Higher Visual Accessibility Score';
+    if (score >= 40) return 'Moderate Visual Accessibility Score';
+    return 'Lower Visual Accessibility Score';
+  };
 
   return (
     <div
@@ -69,10 +71,10 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-white">
-                Official Site Accessibility Audit Report
+                WAYFIND Visual Assessment Report
               </h3>
               <p className="text-[11px] text-slate-400">
-                Printable compliance certificate and deterministic evidence verification
+                Deterministic evidence audit and visual accessibility evaluation report
               </p>
             </div>
           </div>
@@ -94,9 +96,9 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
           </div>
         </div>
 
-        {/* Printable Certificate Document Body */}
+        {/* Printable Document Body */}
         <div className="p-6 sm:p-8 overflow-y-auto space-y-6 text-xs text-slate-200 print:text-black print:overflow-visible print:p-4">
-          {/* Certificate Header Banner */}
+          {/* Header Banner */}
           <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-cyan-950/30 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:border-slate-300 print:bg-slate-50">
             <div className="space-y-1">
               <div className="flex items-center space-x-2">
@@ -105,24 +107,29 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
                   WAYFIND <span className="text-cyan-400 print:text-blue-600">AI</span>
                 </span>
                 <span className="text-[10px] font-mono uppercase bg-slate-800 text-cyan-300 px-2 py-0.5 rounded border border-slate-700 print:bg-slate-200 print:text-slate-800">
-                  Audit Certificate
+                  Visual Assessment Report
                 </span>
               </div>
               <p className="text-xs text-slate-400 print:text-slate-600">
-                Autonomous Physical Environment Accessibility Intelligence
+                Visual Intelligence for Accessible Places — Audit Report
               </p>
             </div>
 
             <div className="text-left sm:text-right font-mono text-[11px] text-slate-400 space-y-0.5 print:text-slate-700">
-              <div>Ref: <strong className="text-white print:text-black">WFA-{analysis.analysis_id.slice(0, 8).toUpperCase()}</strong></div>
+              <div>Ref: <strong className="text-white print:text-black">{reportRef}</strong></div>
               <div>Date: {new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}</div>
-              <div className="text-[10px] text-cyan-400 print:text-blue-700 truncate max-w-[200px]">
-                Digest: {pseudoHash}
+              <div className="text-[10px] text-slate-400">
+                Source: {analysis.image_source_label || 'USER_IMAGE'}
               </div>
             </div>
           </div>
 
-          {/* Score & Compliance Status Grid */}
+          {/* Prominent Non-Certification Disclaimer */}
+          <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-[11px] leading-relaxed print:bg-amber-50 print:border-amber-300 print:text-amber-900">
+            <strong>Non-Certification Notice:</strong> This report provides visual accessibility intelligence derived from 2D monocular image analysis. It is an algorithmic evaluation tool and is <strong>not</strong> a regulatory accessibility certification, physical architectural inspection, or legal guarantee of safe passage.
+          </div>
+
+          {/* Score & Profile Summary Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Score */}
             <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between print:border-slate-300 print:bg-slate-50">
@@ -131,10 +138,8 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
                 <span className="text-3xl font-extrabold text-white print:text-black">{analysis.accessibility_score}</span>
                 <span className="text-slate-400 text-xs"> / 100</span>
               </div>
-              <span className={`text-[11px] font-bold uppercase tracking-wider ${
-                analysis.accessibility_score >= 70 ? 'text-emerald-400' : 'text-amber-400'
-              }`}>
-                {analysis.classification.replace(/_/g, ' ')}
+              <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 print:text-blue-700">
+                {getScoreTierText(analysis.accessibility_score)}
               </span>
             </div>
 
@@ -149,21 +154,19 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
               </span>
             </div>
 
-            {/* Regulatory Standard Mapping */}
+            {/* Evidence Evaluation Scope */}
             <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between print:border-slate-300 print:bg-slate-50">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block">Standards Compliance</span>
-              <div className="my-2 space-y-1">
-                <div className="flex items-center space-x-1.5 text-[11px]">
-                  <span className={`w-2 h-2 rounded-full ${isCompliant ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                  <span className="font-semibold">ADA Title III Section 405</span>
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">Model & Scope</span>
+              <div className="my-2 space-y-1 text-[11px]">
+                <div className="text-slate-300 print:text-slate-700">
+                  Model: <span className="font-mono text-cyan-300 print:text-blue-600">YOLOv8n (COCO)</span>
                 </div>
-                <div className="flex items-center space-x-1.5 text-[11px]">
-                  <span className={`w-2 h-2 rounded-full ${isCompliant ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  <span className="font-semibold">ISO 21542:2021 Safe Ingress</span>
+                <div className="text-slate-400 print:text-slate-600 text-[10px]">
+                  Scope: {analysis.assessment_scope.replace(/_/g, ' ')}
                 </div>
               </div>
-              <span className="text-[10px] text-slate-400">
-                Corridor: Inferred 1.2m Minimum
+              <span className="text-[10px] text-slate-500">
+                Viewpoints: {analysis.viewpoints_analyzed || 1} perspective(s)
               </span>
             </div>
           </div>
@@ -201,7 +204,7 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
                     <tr className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 print:bg-slate-200 print:text-black">
                       <th className="py-2 px-3">Rule / Feature Factor</th>
                       <th className="py-2 px-3">Category</th>
-                      <th className="py-2 px-3 text-right">Impact</th>
+                      <th className="py-2 px-3 text-right">Adjustment</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800 font-mono text-[11px] print:divide-slate-300">
@@ -212,7 +215,7 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
                         <td className={`py-2 px-3 text-right font-bold ${
                           f.startsWith('+') ? 'text-emerald-400 print:text-emerald-700' : 'text-rose-400 print:text-rose-700'
                         }`}>
-                          {f.startsWith('+') ? '+10' : '-10'}
+                          {f.startsWith('+') ? '+10' : f.includes('0 pts') ? '0' : '-10'}
                         </td>
                       </tr>
                     ))}
@@ -226,23 +229,19 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
             )}
           </div>
 
-          {/* Certification Attestation Sign-off */}
-          <div className="p-4.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:border-slate-300 print:bg-slate-50">
+          {/* Audit Verification Note */}
+          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:border-slate-300 print:bg-slate-50">
             <div className="space-y-1">
               <span className="font-bold text-xs text-white print:text-black block">
-                Digital Attestation & Audit Integrity
+                Deterministic Calculation Audit
               </span>
               <p className="text-[11px] text-slate-400 print:text-slate-600 leading-relaxed max-w-lg">
-                This report represents an algorithmic assessment based strictly on observable 2D imagery. Absence of positive evidence is not proof of physical absence. Generated deterministically by the WAYFIND AI Engine.
+                This assessment was generated deterministically by the WAYFIND AI rules engine from observable 2D imagery. Absence of detected obstacles does not guarantee physical access.
               </p>
             </div>
-            <div className="text-center shrink-0 self-end sm:self-center">
-              <div className="w-16 h-16 border-2 border-dashed border-cyan-500/50 rounded-xl flex items-center justify-center mx-auto text-cyan-400 print:border-blue-600 print:text-blue-600">
-                <Award className="w-8 h-8" />
-              </div>
-              <span className="text-[9px] uppercase font-mono font-bold text-slate-400 mt-1 block">
-                VERIFIED SEAL
-              </span>
+            <div className="text-left sm:text-right font-mono text-[10px] text-slate-500">
+              <div>Ref: {reportRef}</div>
+              <div>Deterministic: Base 100 - Penalties</div>
             </div>
           </div>
         </div>
@@ -250,13 +249,13 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
         {/* Modal Footer (Non-print) */}
         <div className="px-6 py-3 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs print:hidden">
           <span className="text-[11px] font-mono text-slate-500">
-            Audit ID: {analysis.analysis_id}
+            Report Ref: {reportRef}
           </span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition text-xs"
           >
-            Close Certificate
+            Close Report
           </button>
         </div>
       </div>

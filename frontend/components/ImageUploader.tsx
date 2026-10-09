@@ -201,7 +201,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-white">{activeDemo.title}</span>
                 <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
-                  Curated Demo Scene — Synthetic Benchmark
+                  CURATED DEMO SCENE — SYNTHETIC TEST FIXTURE
                 </span>
               </div>
               <p className="text-slate-300 text-[11px] mt-0.5">{activeDemo.description}</p>

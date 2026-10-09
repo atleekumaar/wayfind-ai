@@ -182,6 +182,7 @@ class AccessibilityEngine:
             penalties += pts
             factor_desc = f"-{pts} pts: {count} stair barrier instance(s) detected [{profile.replace('_', ' ').title()}]"
             factors.append(factor_desc)
+            first_stair_id = stairs_instances[0][0].id if stairs_instances and hasattr(stairs_instances[0][0], "id") else None
             detailed_factors.append(
                 ScoreBreakdownFactor(
                     factor=factor_desc,
@@ -190,6 +191,9 @@ class AccessibilityEngine:
                     status="detected",
                     source="object_detection",
                     confidence=round(avg_conf, 2),
+                    detection_id=first_stair_id,
+                    rule_name="stairs_penalty",
+                    spatial_relevance="corridor_obstruction",
                 )
             )
             evidence_list.append(
@@ -241,6 +245,7 @@ class AccessibilityEngine:
             name_str = ", ".join(names)
             factor_desc = f"-{pts} pts: {count} obstacle(s) inside pedestrian corridor ({name_str})"
             factors.append(factor_desc)
+            first_obs_id = obstacle_corridor[0][0].id if obstacle_corridor and hasattr(obstacle_corridor[0][0], "id") else None
             detailed_factors.append(
                 ScoreBreakdownFactor(
                     factor=factor_desc,
@@ -249,6 +254,9 @@ class AccessibilityEngine:
                     status="detected",
                     source="spatial_corridor_analysis",
                     confidence=round(avg_conf, 2),
+                    detection_id=first_obs_id,
+                    rule_name="obstacle_corridor_penalty",
+                    spatial_relevance="corridor_obstruction",
                 )
             )
             evidence_list.append(
@@ -350,6 +358,7 @@ class AccessibilityEngine:
             name_str = ", ".join(names)
             factor_desc = f"-{pts} pts: Vehicle in pedestrian corridor ({name_str})"
             factors.append(factor_desc)
+            first_veh_id = vehicle_corridor[0][0].id if vehicle_corridor and hasattr(vehicle_corridor[0][0], "id") else None
             detailed_factors.append(
                 ScoreBreakdownFactor(
                     factor=factor_desc,
@@ -358,6 +367,9 @@ class AccessibilityEngine:
                     status="detected",
                     source="spatial_corridor_analysis",
                     confidence=0.88,
+                    detection_id=first_veh_id,
+                    rule_name="vehicle_corridor_penalty",
+                    spatial_relevance="corridor_obstruction",
                 )
             )
             evidence_list.append(
@@ -513,36 +525,38 @@ class AccessibilityEngine:
         uncertainties.append("Ramp slope/incline gradient angles and door width measurements cannot be metrically certified from monocular 2D imagery.")
 
         # -------------------------------------------------------------
-        # 7. INFERRED CLEAR PATHWAY
+        # 7. INFERRED CLEAR PATHWAY (EVIDENCE-QUALIFIED ASSESSMENT)
         # -------------------------------------------------------------
+        # GLOBAL ENGINEERING RULE: Never award points purely because the detector failed to find obstacles.
+        # "Absence of detected barrier is NOT proof of unconstrained accessibility."
         if not stairs_instances and not obstacle_corridor and not vehicle_corridor:
-            pts = weights["clear_reward"]
-            rewards += pts
-            factor_desc = f"+{pts} pts: Inferred clear navigation corridor in visible field"
+            factor_desc = "0 pts: No supported barrier objects detected in visible corridor (Absence of evidence != confirmed clear)"
             factors.append(factor_desc)
             detailed_factors.append(
                 ScoreBreakdownFactor(
                     factor=factor_desc,
-                    points=pts,
+                    points=0,
                     category="path",
                     status="inferred",
                     source="spatial_corridor_analysis",
-                    confidence=0.85,
+                    confidence=0.70,
+                    rule_name="no_visible_corridor_barriers",
+                    spatial_relevance="inside_navigation_corridor",
                 )
             )
             evidence_list.append(
                 Evidence(
-                    feature="Clear Navigable Pathway",
+                    feature="Navigable Pathway Region",
                     status="inferred",
                     source="spatial_corridor_analysis",
-                    confidence=0.85,
-                    description="Pathway appears free of major step barriers or corridor-blocking obstructions in visible area.",
+                    confidence=0.70,
+                    description="No supported barrier objects were detected in the visible analysis region. Verify path surface and clearance on-site.",
                 )
             )
             recommendations.append(
                 Recommendation(
                     priority="LOW",
-                    text="No major visual barriers were detected in this image. Verify conditions in person before relying on this assessment.",
+                    text="No supported barrier objects detected in visible frame. Note that micro-surface grade, slope, and door clearance cannot be confirmed from 2D photos alone.",
                 )
             )
 
@@ -554,19 +568,27 @@ class AccessibilityEngine:
         classification = cls.get_classification(final_score)
 
         # -------------------------------------------------------------
-        # 9. DUAL CONFIDENCE CALCULATION
+        # 9. EVIDENCE SUFFICIENCY & CONFIDENCE CALCULATION
         # -------------------------------------------------------------
-        # A. Vision Confidence: average detection confidence
+        # A. Vision Confidence: average detection confidence (strictly for positive detections)
         pos_confs = [d.confidence for d in detections if d.confidence > 0]
         vision_confidence = round(sum(pos_confs) / len(pos_confs), 2) if pos_confs else None
 
-        # B. Assessment Confidence: depends on visual coverage & spatial relevance
+        # B. Evidence Sufficiency: evaluates whether visible evidence is sufficient for a reliable determination
+        # empty detections or monocular single view of empty floor = limited_evidence
         total_relevant = len(stairs_instances) + len(obstacle_corridor) + len(vehicle_corridor)
-        if total_relevant >= 2 or stairs_instances:
+        if total_relevant >= 2 or (stairs_instances and obstacle_corridor):
+            evidence_sufficiency = "sufficient_evidence"
             assessment_confidence: AssessmentConfidence = "HIGH"
-        elif len(detections) >= 1 or not stairs_instances:
+        elif total_relevant >= 1 or len(detections) >= 2:
+            evidence_sufficiency = "sufficient_evidence"
+            assessment_confidence = "MEDIUM"
+        elif len(detections) == 1:
+            evidence_sufficiency = "limited_evidence"
             assessment_confidence = "MEDIUM"
         else:
+            # 0 detections in scene: we cannot confirm clear path, only that no barriers were detected
+            evidence_sufficiency = "limited_evidence"
             assessment_confidence = "LOW"
 
         # Summary Generation
@@ -601,6 +623,7 @@ class AccessibilityEngine:
             "classification": classification,
             "assessment_confidence": assessment_confidence,
             "vision_confidence": vision_confidence,
+            "evidence_sufficiency": evidence_sufficiency,
             "assessment_scope": "visible_area_only",
             "profile": profile,
             "spatial_assessments": spatial_assessments,

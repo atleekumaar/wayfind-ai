@@ -115,7 +115,19 @@ export const ScoreAuditModal: React.FC<ScoreAuditModalProps> = ({
                       <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
                         <td className="py-2.5 px-3">
                           <span className="font-semibold text-slate-200 font-sans block">{f.factor}</span>
-                          <span className="text-[10px] text-slate-500 font-mono">Source: {f.source}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-slate-500 font-mono">Source: {f.source}</span>
+                            {f.detection_id && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                                Link: {f.detection_id}
+                              </span>
+                            )}
+                            {f.rule_name && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                                Rule: {f.rule_name}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">
