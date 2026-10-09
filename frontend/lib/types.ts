@@ -1,6 +1,7 @@
 export type RiskSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type RecommendationPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type AssessmentConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+export type AssessmentStatus = 'PRELIMINARY' | 'INCONCLUSIVE' | 'ASSESSED';
 export type EvidenceSufficiency = 'sufficient_evidence' | 'limited_evidence' | 'insufficient_evidence' | 'analysis_failed';
 export type EvidenceStatus = 'detected' | 'inferred' | 'unknown' | 'not_detected';
 export type EvidenceSource =
@@ -91,6 +92,8 @@ export interface ScoreBreakdown {
 export interface AnalysisResponse {
   success: boolean;
   analysis_id: string;
+  assessment_status: AssessmentStatus;
+  assessment_status_reason?: string | null;
   accessibility_score: number;
   classification: AccessibilityClassification;
   assessment_confidence: AssessmentConfidence;
@@ -118,6 +121,8 @@ export interface AnalysisResponse {
 export interface MultiViewAnalysisResponse {
   success: boolean;
   analysis_id: string;
+  assessment_status: AssessmentStatus;
+  assessment_status_reason?: string | null;
   accessibility_score: number;
   classification: AccessibilityClassification;
   assessment_confidence: AssessmentConfidence;

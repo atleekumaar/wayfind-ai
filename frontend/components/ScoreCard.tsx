@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import {
   AccessibilityClassification,
   AssessmentConfidence,
+  AssessmentStatus,
   ScoreBreakdown,
   AccessibilityProfile,
 } from '../lib/types';
@@ -19,6 +20,7 @@ import {
   TrendingDown,
   TrendingUp,
   FileCheck2,
+  HelpCircle,
 } from 'lucide-react';
 import { ScoreAuditModal } from './ScoreAuditModal';
 import { AuditReportModal } from './AuditReportModal';
@@ -27,6 +29,7 @@ interface ScoreCardProps {
   score: number;
   classification: AccessibilityClassification;
   confidence: AssessmentConfidence;
+  assessmentStatus?: AssessmentStatus;
   visionConfidence?: number | null;
   profile: AccessibilityProfile;
   scope: string;
@@ -41,6 +44,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   score,
   classification,
   confidence,
+  assessmentStatus,
   visionConfidence,
   profile,
   scope,
@@ -61,13 +65,24 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
     low_vision: { label: 'Low Vision Mode', badge: 'bg-purple-950/80 text-purple-300 border-purple-700/80' },
   };
 
+  const isInconclusive = assessmentStatus === 'INCONCLUSIVE';
+
   const getTheme = () => {
+    if (isInconclusive) {
+      return {
+        badgeBg: 'bg-slate-800 border-slate-700 text-slate-300',
+        ringColor: 'stroke-slate-600',
+        textColor: 'text-slate-400',
+        label: 'Inconclusive Assessment',
+        icon: HelpCircle,
+      };
+    }
     if (score >= 90) {
       return {
         badgeBg: 'bg-emerald-950/80 border-emerald-700 text-emerald-300',
         ringColor: 'stroke-emerald-400',
         textColor: 'text-emerald-400',
-        label: 'Fully Accessible',
+        label: 'Preliminary Pass',
         icon: CheckCircle2,
       };
     } else if (score >= 70) {
@@ -75,7 +90,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
         badgeBg: 'bg-cyan-950/80 border-cyan-700 text-cyan-300',
         ringColor: 'stroke-cyan-400',
         textColor: 'text-cyan-400',
-        label: 'Mostly Accessible',
+        label: 'Preliminary Moderate',
         icon: ShieldCheck,
       };
     } else if (score >= 40) {
@@ -83,7 +98,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
         badgeBg: 'bg-amber-950/80 border-amber-700 text-amber-300',
         ringColor: 'stroke-amber-400',
         textColor: 'text-amber-400',
-        label: 'Partially Accessible',
+        label: 'Preliminary Caution',
         icon: AlertTriangle,
       };
     } else {
@@ -91,7 +106,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
         badgeBg: 'bg-rose-950/80 border-rose-700 text-rose-300',
         ringColor: 'stroke-rose-400',
         textColor: 'text-rose-400',
-        label: 'Limited Accessibility',
+        label: 'Preliminary Barrier Alert',
         icon: AlertOctagon,
       };
     }
@@ -165,10 +180,21 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-3xl font-extrabold text-white tracking-tight">
-              {score}
-            </span>
-            <span className="text-[10px] font-medium text-slate-400">/ 100</span>
+            {isInconclusive ? (
+              <>
+                <span className="text-sm font-extrabold text-slate-300 tracking-tight uppercase">
+                  N/A
+                </span>
+                <span className="text-[9px] font-medium text-slate-400">INCONCLUSIVE</span>
+              </>
+            ) : (
+              <>
+                <span className="text-3xl font-extrabold text-white tracking-tight">
+                  {score}
+                </span>
+                <span className="text-[10px] font-medium text-slate-400">/ 100</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -180,6 +206,12 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
               <span>{theme.label}</span>
             </span>
           </div>
+
+          {isInconclusive && (
+            <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300 text-[11px] leading-relaxed">
+              <strong>Insufficient Visual Evidence:</strong> Zero obstacles or path features were detected. Absence of detected barriers does not verify accessibility. Capture additional angles or verify on-site.
+            </div>
+          )}
 
           {/* Dual Confidence Badges */}
           <div className="flex flex-wrap items-center gap-1.5 justify-center sm:justify-start">

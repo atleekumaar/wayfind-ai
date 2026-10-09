@@ -15,6 +15,7 @@ from app.schemas.analysis import (
     LIMITED_ACCESSIBILITY,
     AccessibilityClassification,
     AssessmentConfidence,
+    AssessmentStatus,
     AccessibilityProfile,
 )
 from app.services.spatial_reasoning import SpatialReasoner
@@ -147,6 +148,11 @@ class AccessibilityEngine:
         ramp_instances: List[Detection] = []
 
         for idx, d in enumerate(detections):
+            # GLOBAL ENGINEERING RULE: Filter out detections that are not supported by the active model
+            if not getattr(d, "is_model_supported", True) or getattr(d, "detection_status", "detected") == "unsupported":
+                logger.warning("Ignoring unsupported detection from scoring: %s", d.class_name)
+                continue
+
             cname = d.class_name.lower()
             cat = d.category
             sp = spatial_by_index.get(idx)
@@ -568,28 +574,49 @@ class AccessibilityEngine:
         classification = cls.get_classification(final_score)
 
         # -------------------------------------------------------------
-        # 9. EVIDENCE SUFFICIENCY & CONFIDENCE CALCULATION
+        # 9. EVIDENCE SUFFICIENCY & ASSESSMENT STATUS CALCULATION
         # -------------------------------------------------------------
         # A. Vision Confidence: average detection confidence (strictly for positive detections)
         pos_confs = [d.confidence for d in detections if d.confidence > 0]
         vision_confidence = round(sum(pos_confs) / len(pos_confs), 2) if pos_confs else None
 
-        # B. Evidence Sufficiency: evaluates whether visible evidence is sufficient for a reliable determination
-        # empty detections or monocular single view of empty floor = limited_evidence
-        total_relevant = len(stairs_instances) + len(obstacle_corridor) + len(vehicle_corridor)
-        if total_relevant >= 2 or (stairs_instances and obstacle_corridor):
+        # B. Evidence Sufficiency & Assessment Status:
+        # GLOBAL ENGINEERING RULE:
+        # Absence of detected barrier is NOT proof of accessibility.
+        # If there are 0 detections, or only unsupported detections, assessment is INCONCLUSIVE.
+        supported_detections = [
+            d for d in detections
+            if getattr(d, "is_model_supported", True) and getattr(d, "detection_status", "detected") != "unsupported"
+        ]
+        total_supported_barriers = len(stairs_instances) + len(obstacle_corridor) + len(vehicle_corridor)
+        total_valid_detections = len(supported_detections)
+
+        if total_valid_detections == 0:
+            assessment_status: AssessmentStatus = "INCONCLUSIVE"
+            assessment_status_reason = (
+                "Insufficient visual evidence: zero supported objects detected in monocular camera perspective. "
+                "Absence of detected obstacles does not verify an unconstrained accessible path. "
+                "Additional viewpoints or on-site physical verification required."
+            )
+            evidence_sufficiency = "insufficient_evidence"
+            assessment_confidence: AssessmentConfidence = "LOW"
+        elif total_supported_barriers > 0:
+            assessment_status: AssessmentStatus = "PRELIMINARY"
+            assessment_status_reason = (
+                f"Preliminary barrier assessment: {total_supported_barriers} barrier hazard(s) observed in navigation corridor. "
+                "Provides actionable warning but does not certify entire location accessibility."
+            )
             evidence_sufficiency = "sufficient_evidence"
-            assessment_confidence: AssessmentConfidence = "HIGH"
-        elif total_relevant >= 1 or len(detections) >= 2:
-            evidence_sufficiency = "sufficient_evidence"
-            assessment_confidence = "MEDIUM"
-        elif len(detections) == 1:
-            evidence_sufficiency = "limited_evidence"
-            assessment_confidence = "MEDIUM"
+            assessment_confidence = "HIGH" if total_supported_barriers >= 2 else "MEDIUM"
         else:
-            # 0 detections in scene: we cannot confirm clear path, only that no barriers were detected
+            # Detections exist (e.g. background objects or clear path features) but no barriers
+            assessment_status: AssessmentStatus = "PRELIMINARY"
+            assessment_status_reason = (
+                "Preliminary visual survey: No supported corridor barriers localized in the visible frame. "
+                "Ground-level slope, tactile paving, and doorway clearances remain unmeasured from 2D imagery."
+            )
             evidence_sufficiency = "limited_evidence"
-            assessment_confidence = "LOW"
+            assessment_confidence = "MEDIUM" if total_valid_detections >= 2 else "LOW"
 
         # Summary Generation
         summary = cls._generate_summary(
@@ -600,6 +627,8 @@ class AccessibilityEngine:
             len(obstacle_corridor),
             assessment_confidence,
             profile,
+            assessment_status,
+            assessment_status_reason,
         )
 
         speech_summary = cls._generate_speech_summary(
@@ -608,6 +637,7 @@ class AccessibilityEngine:
             len(stairs_instances),
             len(obstacle_corridor),
             profile,
+            assessment_status,
         )
 
         breakdown = ScoreBreakdown(
@@ -621,6 +651,8 @@ class AccessibilityEngine:
         return {
             "score": final_score,
             "classification": classification,
+            "assessment_status": assessment_status,
+            "assessment_status_reason": assessment_status_reason,
             "assessment_confidence": assessment_confidence,
             "vision_confidence": vision_confidence,
             "evidence_sufficiency": evidence_sufficiency,
@@ -645,6 +677,8 @@ class AccessibilityEngine:
         obstacles_count: int,
         confidence: AssessmentConfidence,
         profile: AccessibilityProfile,
+        assessment_status: AssessmentStatus = "PRELIMINARY",
+        assessment_status_reason: Optional[str] = None,
     ) -> str:
         """Constructs an evidence-qualified summary of physical accessibility."""
         labels = {
@@ -656,20 +690,27 @@ class AccessibilityEngine:
         human_class = labels.get(classification, classification)
         prof_name = profile.replace("_", " ").title()
 
+        if assessment_status == "INCONCLUSIVE":
+            return (
+                f"Assessment INCONCLUSIVE for {prof_name} (Nominal score: {score}/100, {confidence} confidence). "
+                "Insufficient visual evidence detected in camera view to evaluate accessibility. "
+                "Absence of detected barriers does not verify accessibility. Additional perspectives or on-site verification required."
+            )
+
         if stairs_count > 0:
             return (
-                f"Evaluated as {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
+                f"Preliminary Assessment: {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
                 f"Stairs were detected near the visible pathway and may present a significant mobility barrier. "
                 "Ramp availability cannot be determined from this single viewpoint."
             )
         elif obstacles_count > 0:
             return (
-                f"Evaluated as {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
+                f"Preliminary Assessment: {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
                 "Step-free path observed, but obstacles intersecting the inferred pedestrian corridor reduce navigable width."
             )
         else:
             return (
-                f"Evaluated as {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
+                f"Preliminary Assessment: {human_class} ({score}/100, {confidence} confidence) for {prof_name}. "
                 "No major visual barriers were detected in the analyzed corridor. "
                 "Visual analysis is limited to the camera field of view."
             )
@@ -681,22 +722,30 @@ class AccessibilityEngine:
         stairs_count: int,
         obstacles_count: int,
         profile: AccessibilityProfile,
+        assessment_status: AssessmentStatus = "PRELIMINARY",
     ) -> str:
         """Constructs a concise, spoken text summary for browser speech synthesis."""
         tier = classification.replace("_", " ").title()
         prof = profile.replace("_", " ").title()
+
+        if assessment_status == "INCONCLUSIVE":
+            return (
+                f"Assessment inconclusive for {prof}. Insufficient visual evidence to confirm accessibility. "
+                "Please capture additional camera angles or verify on-site."
+            )
+
         if stairs_count > 0:
             return (
-                f"Accessibility score {score} out of 100, {tier} for {prof}. "
+                f"Preliminary assessment: score {score} out of 100, {tier} for {prof}. "
                 "Stairs were detected near the visible route. A step-free ramp could not be verified."
             )
         elif obstacles_count > 0:
             return (
-                f"Accessibility score {score} out of 100, {tier} for {prof}. "
+                f"Preliminary assessment: score {score} out of 100, {tier} for {prof}. "
                 "Potential pathway obstruction detected along the pedestrian corridor."
             )
         else:
             return (
-                f"Accessibility score {score} out of 100, {tier} for {prof}. "
+                f"Preliminary assessment: score {score} out of 100, {tier} for {prof}. "
                 "No major physical step barriers detected in the visible camera perspective."
             )

@@ -80,6 +80,8 @@ class AccessibilityAnalyzer:
         return AnalysisResponse(
             success=True,
             analysis_id=analysis_id,
+            assessment_status=eval_result.get("assessment_status", "PRELIMINARY"),
+            assessment_status_reason=eval_result.get("assessment_status_reason"),
             accessibility_score=eval_result["score"],
             classification=eval_result["classification"],
             assessment_confidence=eval_result["assessment_confidence"],

@@ -17,6 +17,7 @@ AccessibilityClassification = Literal[
 RiskSeverity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 RecommendationPriority = Literal["LOW", "MEDIUM", "HIGH"]
 AssessmentConfidence = Literal["HIGH", "MEDIUM", "LOW"]
+AssessmentStatus = Literal["PRELIMINARY", "INCONCLUSIVE", "ASSESSED"]
 EvidenceSufficiency = Literal["sufficient_evidence", "limited_evidence", "insufficient_evidence", "analysis_failed"]
 
 EvidenceStatus = Literal["detected", "inferred", "unknown", "not_detected"]
@@ -111,6 +112,8 @@ class ScoreBreakdown(BaseModel):
 class AnalysisResponse(BaseModel):
     success: bool = True
     analysis_id: str
+    assessment_status: AssessmentStatus = Field("PRELIMINARY", description="Operational assessment status: PRELIMINARY, INCONCLUSIVE, or ASSESSED")
+    assessment_status_reason: Optional[str] = Field(None, description="Detailed rationale if assessment is INCONCLUSIVE or PRELIMINARY")
     accessibility_score: int = Field(..., ge=0, le=100, description="Overall accessibility score between 0 and 100")
     classification: AccessibilityClassification
     assessment_confidence: AssessmentConfidence = Field("MEDIUM", description="Confidence in assessment based on visual coverage")
@@ -140,6 +143,8 @@ class AnalysisResponse(BaseModel):
 class MultiViewAnalysisResponse(BaseModel):
     success: bool = True
     analysis_id: str
+    assessment_status: AssessmentStatus = Field("PRELIMINARY", description="Aggregated multi-view assessment status")
+    assessment_status_reason: Optional[str] = Field(None, description="Rationale for aggregated assessment status")
     accessibility_score: int = Field(..., ge=0, le=100)
     classification: AccessibilityClassification
     assessment_confidence: AssessmentConfidence

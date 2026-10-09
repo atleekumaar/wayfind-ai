@@ -153,8 +153,8 @@ export const VisualComparison: React.FC<VisualComparisonProps> = ({
                   />
                 </svg>
                 <div className="absolute bottom-3 bg-emerald-950/90 text-emerald-300 border border-emerald-700/80 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-mono font-bold flex items-center space-x-1.5 shadow-lg">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>Traversable Corridor: 1.2m Width Clearance Verified</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>Traversable Corridor: Inferred Clearance (Visual Estimation • Uncalibrated 2D)</span>
                 </div>
               </div>
             )}

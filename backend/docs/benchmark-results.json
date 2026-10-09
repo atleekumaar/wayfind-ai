@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-10-09T22:38:10Z",
+  "engine_version": "1.0.0",
+  "invariants_tested": 5,
+  "invariants_passed": 5,
+  "scenarios_evaluated": 0,
+  "metrics": {},
+  "details": [
+    {
+      "test": "empty_scene_bounded_and_inconclusive_status",
+      "status": "PASSED"
+    },
+    {
+      "test": "contextual_outside_corridor_zero_penalty",
+      "status": "PASSED"
+    },
+    {
+      "test": "corridor_obstacle_penalty_math",
+      "status": "PASSED"
+    },
+    {
+      "test": "score_clamping_non_negative",
+      "status": "PASSED"
+    },
+    {
+      "test": "profile_sensitivity_wheelchair_gt_general",
+      "status": "PASSED"
+    }
+  ],
+  "elapsed_seconds": 0.002,
+  "pass_rate_percent": 100.0,
+  "synthetic_verification_status": "PASSED",
+  "real_world_benchmark_status": "PENDING",
+  "real_world_benchmark_notes": "Real-world accessibility photo test dataset is pending ingestion. No synthetic scores are passed off as real-world benchmarks."
+}

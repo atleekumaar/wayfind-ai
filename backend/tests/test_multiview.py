@@ -23,14 +23,16 @@ class TestMultiViewAnalysis:
         assert "Multi-View" in res.summary
 
     def test_two_views_evidence_aggregation(self):
-        """G2: Multi-view analysis across 2 images combines distinct visual evidence."""
+        """G2: Multi-view analysis across 2 images combines distinct visual evidence and respects evidence sufficiency."""
         engine = MultiViewFusionEngine()
         img1 = make_test_image((50, 80, 120))
         img2 = make_test_image((120, 80, 50))
         res = engine.analyze_views([img1, img2])
         assert res.viewpoints_count == 2
         assert len(res.individual_analyses) == 2
-        assert res.assessment_confidence == "HIGH"
+        # Both images are synthetic blank swatches with 0 detections -> must truthfully be INCONCLUSIVE and LOW confidence
+        assert res.assessment_status == "INCONCLUSIVE"
+        assert res.assessment_confidence == "LOW"
         assert len(res.fused_evidence) > 0
 
     def test_three_views_maximum_capacity(self):

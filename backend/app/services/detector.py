@@ -104,8 +104,8 @@ class Detector:
         Does NOT fabricate detections for unsupported specialized concepts.
         """
         if self.model is None:
-            logger.warning("Detector model is not initialized; returning empty detections.")
-            return []
+            logger.error("Detector model is not initialized; inference cannot proceed.")
+            raise RuntimeError("Vision model checkpoint is unavailable or failed to initialize.")
 
         conf = conf_threshold if conf_threshold is not None else settings.DEFAULT_CONFIDENCE
         

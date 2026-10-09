@@ -143,9 +143,14 @@ class TestAccessibilityEngineHardening:
 
     def test_speech_summary_generation(self):
         """I1: Speech summary string is populated for screen readers / text-to-speech."""
-        res = AccessibilityEngine.analyze([])
-        assert "speech_summary" in res
-        assert "Accessibility score" in res["speech_summary"]
+        res_empty = AccessibilityEngine.analyze([])
+        assert "speech_summary" in res_empty
+        assert "inconclusive" in res_empty["speech_summary"].lower()
+
+        det = Detection(class_name="bench", confidence=0.85, bbox=[260.0, 320.0, 380.0, 440.0], category="obstacle")
+        res_det = AccessibilityEngine.analyze([det])
+        assert "Preliminary assessment" in res_det["speech_summary"]
+        assert "score" in res_det["speech_summary"].lower()
 
     def test_deterministic_explanation_fallback(self):
         """F2: Deterministic explanation provider works reliably."""

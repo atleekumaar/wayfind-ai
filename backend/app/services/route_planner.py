@@ -74,7 +74,8 @@ class AccessibleRoutePlanner:
                         for i in range(len(path) - 1)
                     ),
                     "data_source": "pedestrian_graph_engine_v1",
-                    "provenance": "verified_deterministic_graph",
+                    "provenance": "sample_graph",
+                    "limitations": "Synthetic topological mock graph for algorithmic path demonstration; not verified against municipal GIS.",
                 }
 
             if current in visited:

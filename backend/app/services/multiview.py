@@ -12,6 +12,7 @@ from app.schemas.analysis import (
     Recommendation,
     AccessibilityProfile,
     AssessmentConfidence,
+    AssessmentStatus,
 )
 from app.services.analyzer import AccessibilityAnalyzer
 
@@ -139,28 +140,59 @@ class MultiViewFusionEngine:
         mean_vision_conf = round(sum(pos_confs) / len(pos_confs), 2) if pos_confs else None
 
         # Assessment Confidence increases with multi-angle coverage!
-        assessment_confidence: AssessmentConfidence = (
-            "HIGH" if len(active_images) >= 2 else individual_analyses[0].assessment_confidence
-        )
+        # GLOBAL ENGINEERING RULE:
+        # If all views are inconclusive / empty, the multi-view assessment MUST remain INCONCLUSIVE!
+        all_inconclusive = all(a.assessment_status == "INCONCLUSIVE" for a in individual_analyses)
+        any_inconclusive = any(a.assessment_status == "INCONCLUSIVE" for a in individual_analyses)
+        has_any_detections = any(len(a.detections) > 0 for a in individual_analyses)
+
+        if all_inconclusive or not has_any_detections:
+            fused_status: AssessmentStatus = "INCONCLUSIVE"
+            fused_status_reason = (
+                f"Multi-view assessment INCONCLUSIVE across {len(active_images)} perspective(s): "
+                "no physical objects or corridor entities detected in any view. "
+                "Absence of detected barriers across viewpoints does not certify accessibility. On-site verification required."
+            )
+            assessment_confidence: AssessmentConfidence = "LOW"
+        else:
+            fused_status = "PRELIMINARY"
+            fused_status_reason = (
+                f"Preliminary multi-view evaluation synthesized across {len(active_images)} perspective(s)."
+            )
+            assessment_confidence = (
+                "HIGH" if len(active_images) >= 2 else individual_analyses[0].assessment_confidence
+            )
 
         view_count = len(active_images)
-        summary = (
-            f"Multi-View Synthesis across {view_count} camera perspective(s). "
-            f"Overall assessed as {classification.replace('_', ' ').title()} ({fused_score}/100, {assessment_confidence} confidence). "
-            f"{'Stairs were observed in at least one viewpoint.' if any(r.type == 'STAIRS_BARRIER' for r in fused_risks) else 'No severe structural step barriers observed across perspectives.'}"
-        )
-
-        speech_summary = (
-            f"Multi-view analysis across {view_count} perspectives. "
-            f"Accessibility score {fused_score} out of 100, {classification.replace('_', ' ').title()}. "
-            f"{fused_risks[0].description if fused_risks else 'No major barriers observed.'}"
-        )
+        if fused_status == "INCONCLUSIVE":
+            summary = (
+                f"Multi-View Assessment INCONCLUSIVE across {view_count} camera perspective(s). "
+                f"Nominal score: {fused_score}/100 ({assessment_confidence} confidence). "
+                "Insufficient visual evidence across evaluated angles to confirm accessibility."
+            )
+            speech_summary = (
+                f"Multi-view assessment inconclusive across {view_count} perspectives. "
+                "Insufficient visual evidence to verify accessibility. On-site inspection recommended."
+            )
+        else:
+            summary = (
+                f"Multi-View Preliminary Synthesis across {view_count} camera perspective(s). "
+                f"Overall assessed as {classification.replace('_', ' ').title()} ({fused_score}/100, {assessment_confidence} confidence). "
+                f"{'Stairs were observed in at least one viewpoint.' if any(r.type == 'STAIRS_BARRIER' for r in fused_risks) else 'No severe structural step barriers observed across perspectives.'}"
+            )
+            speech_summary = (
+                f"Multi-view preliminary assessment across {view_count} perspectives. "
+                f"Accessibility score {fused_score} out of 100, {classification.replace('_', ' ').title()}. "
+                f"{fused_risks[0].description if fused_risks else 'No major barriers observed.'}"
+            )
 
         total_elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         return MultiViewAnalysisResponse(
             success=True,
             analysis_id=analysis_id,
+            assessment_status=fused_status,
+            assessment_status_reason=fused_status_reason,
             accessibility_score=fused_score,
             classification=classification,
             assessment_confidence=assessment_confidence,

@@ -98,6 +98,8 @@ export default function Home() {
         result = {
           success: multiRes.success,
           analysis_id: multiRes.analysis_id,
+          assessment_status: multiRes.assessment_status || 'PRELIMINARY',
+          assessment_status_reason: multiRes.assessment_status_reason,
           accessibility_score: multiRes.accessibility_score,
           classification: multiRes.classification,
           assessment_confidence: multiRes.assessment_confidence,
@@ -274,9 +276,9 @@ export default function Home() {
                     <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
                       Scope: {analysisResult.assessment_scope.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-slate-950 text-emerald-400 border border-slate-800 flex items-center space-x-1">
-                      <MapPin className="w-2.5 h-2.5 text-emerald-400" />
-                      <span>GPS: 28.6139° N, 77.2090° E • Verified Geotag</span>
+                    <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 flex items-center space-x-1">
+                      <MapPin className="w-2.5 h-2.5 text-slate-500" />
+                      <span>Location: Not provided (Monocular Image Scope)</span>
                     </span>
                     {selectedFiles.length > 1 && (
                       <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
@@ -341,6 +343,7 @@ export default function Home() {
                   score={analysisResult.accessibility_score}
                   classification={analysisResult.classification}
                   confidence={analysisResult.assessment_confidence}
+                  assessmentStatus={analysisResult.assessment_status}
                   visionConfidence={visionConfidenceAvg}
                   profile={selectedProfile}
                   scope={analysisResult.assessment_scope}
