@@ -37,6 +37,9 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const liveLoopRef = useRef<NodeJS.Timeout | null>(null);
   const isAnalyzingFrameRef = useRef<boolean>(false);
+  const activeStreamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const cameraRequestIdRef = useRef<number>(0);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -53,6 +56,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [frameCount, setFrameCount] = useState<number>(0);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     if (!isOpen) {
       stopLiveDetection();
       stopCamera();
@@ -62,14 +67,36 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     startCamera();
 
     return () => {
+      isMountedRef.current = false;
       stopLiveDetection();
       stopCamera();
     };
   }, [isOpen, facingMode]);
 
+  const stopCamera = () => {
+    cameraRequestIdRef.current++;
+
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (_) {}
+      });
+      activeStreamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setStream(null);
+  };
+
   const startCamera = async () => {
     setCameraError(null);
     stopCamera();
+
+    const currentRequestId = ++cameraRequestIdRef.current;
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -85,25 +112,26 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         audio: false,
       });
 
+      if (!isMountedRef.current || !isOpen || currentRequestId !== cameraRequestIdRef.current) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      activeStreamRef.current = mediaStream;
       setStream(mediaStream);
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
     } catch (err: any) {
+      if (!isMountedRef.current || currentRequestId !== cameraRequestIdRef.current) return;
       console.warn('Camera access error:', err);
       setCameraError(
         err.name === 'NotAllowedError'
           ? 'Camera permission denied. Please allow camera access in your browser settings.'
           : err.message || 'Unable to connect to camera device.'
       );
-    }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
     }
   };
 

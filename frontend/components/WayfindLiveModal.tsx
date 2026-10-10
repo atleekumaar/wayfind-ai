@@ -45,6 +45,9 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
   const liveLoopRef = useRef<NodeJS.Timeout | null>(null);
   const isAnalyzingFrameRef = useRef<boolean>(false);
   const trackerRef = useRef<LightweightTemporalTracker>(new LightweightTemporalTracker(3));
+  const activeStreamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const cameraRequestIdRef = useRef<number>(0);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -68,6 +71,8 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
   // Freeze Frame & Evidence Replay State
   const [isFrozen, setIsFrozen] = useState<boolean>(false);
   const [frozenFrameDataUrl, setFrozenFrameDataUrl] = useState<string | null>(null);
+  const [frozenAnalysis, setFrozenAnalysis] = useState<AnalysisResponse | null>(null);
+  const [frozenTracks, setFrozenTracks] = useState<TrackedObject[]>([]);
   const [isReplayModalOpen, setIsReplayModalOpen] = useState<boolean>(false);
 
   // Voice Query State
@@ -78,7 +83,10 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
     setActiveProfile(profile);
   }, [profile]);
 
+  // Robust Camera Lifecycle Management with stable refs
   useEffect(() => {
+    isMountedRef.current = true;
+
     if (!isOpen) {
       stopLiveLoop();
       stopCamera();
@@ -88,15 +96,41 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
     startCamera();
 
     return () => {
+      isMountedRef.current = false;
       stopLiveLoop();
       stopCamera();
     };
   }, [isOpen, facingMode]);
 
+  const stopCamera = () => {
+    // 1. Invalidate any in-flight camera request
+    cameraRequestIdRef.current++;
+
+    // 2. Stop all tracks from the stable ref
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (_) {}
+      });
+      activeStreamRef.current = null;
+    }
+
+    // 3. Detach stream from video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setStream(null);
+    setCameraState('paused');
+  };
+
   const startCamera = async () => {
     setCameraError(null);
     setCameraState('initializing');
     stopCamera();
+
+    const currentRequestId = ++cameraRequestIdRef.current;
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -112,14 +146,25 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
         audio: false,
       });
 
+      // If component unmounted or another camera request superseded this one, immediately discard
+      if (!isMountedRef.current || !isOpen || currentRequestId !== cameraRequestIdRef.current) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      activeStreamRef.current = mediaStream;
       setStream(mediaStream);
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         await videoRef.current.play();
-        setCameraState('active');
-        startLiveLoop();
+        if (isMountedRef.current && currentRequestId === cameraRequestIdRef.current) {
+          setCameraState('active');
+          startLiveLoop();
+        }
       }
     } catch (err: any) {
+      if (!isMountedRef.current || currentRequestId !== cameraRequestIdRef.current) return;
       console.warn('Camera access error:', err);
       setCameraState('error');
       setCameraError(
@@ -128,14 +173,6 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
           : err.message || 'Unable to connect to camera device.'
       );
     }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-    setCameraState('paused');
   };
 
   const toggleFacingMode = () => {
@@ -232,6 +269,8 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
       setFrozenFrameDataUrl(dataUrl);
+      setFrozenAnalysis(currentAnalysis ? JSON.parse(JSON.stringify(currentAnalysis)) : null);
+      setFrozenTracks([...trackedObjects]);
       setIsFrozen(true);
       stopLiveLoop();
       setIsReplayModalOpen(true);
@@ -242,6 +281,8 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
     setIsFrozen(false);
     setIsReplayModalOpen(false);
     setFrozenFrameDataUrl(null);
+    setFrozenAnalysis(null);
+    setFrozenTracks([]);
     startLiveLoop();
   };
 
@@ -493,8 +534,8 @@ export const WayfindLiveModal: React.FC<WayfindLiveModalProps> = ({
         isOpen={isReplayModalOpen}
         onClose={() => setIsReplayModalOpen(false)}
         frozenFrameUrl={frozenFrameDataUrl}
-        analysis={currentAnalysis}
-        tracks={trackedObjects}
+        analysis={frozenAnalysis}
+        tracks={frozenTracks}
         profile={activeProfile}
         onContinueLive={handleResumeLive}
       />
