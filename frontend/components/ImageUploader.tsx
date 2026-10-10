@@ -16,6 +16,7 @@ import {
 import { DEMO_SCENES } from '../lib/demoScenes';
 import { DemoScene, AccessibilityProfile } from '../lib/types';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { WayfindLiveModal } from './WayfindLiveModal';
 
 interface ImageUploaderProps {
   onFilesSelected: (files: File[], isDemo?: boolean, demoInfo?: DemoScene) => void;
@@ -48,6 +49,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isLiveModalOpen, setIsLiveModalOpen] = useState(false);
 
   const profiles: { id: AccessibilityProfile; label: string; desc: string }[] = [
     { id: 'general_mobility', label: 'General', desc: 'Standard pedestrian corridor analysis' },
@@ -127,14 +129,25 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
         {/* Demo Scenarios & Live Camera Trigger */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Flagship: WAYFIND LIVE Mode Button */}
+          <button
+            type="button"
+            onClick={() => setIsLiveModalOpen(true)}
+            disabled={isAnalyzing}
+            className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 transition flex items-center space-x-1.5 shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400/50"
+          >
+            <Camera className="w-3.5 h-3.5 text-slate-950" />
+            <span>WAYFIND LIVE</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsCameraOpen(true)}
             disabled={isAnalyzing}
-            className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 transition flex items-center space-x-1.5 shadow-sm"
+            className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800 transition flex items-center space-x-1.5 shadow-sm"
           >
-            <Camera className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Live Camera</span>
+            <Camera className="w-3 h-3 text-cyan-400" />
+            <span>Snapshot</span>
           </button>
 
           <span className="text-[10px] uppercase font-bold text-slate-500 mr-1 hidden md:inline">
@@ -432,7 +445,18 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         </div>
       </div>
 
-      {/* Live Camera Capture Modal */}
+      {/* Flagship: WAYFIND LIVE Intelligence Modal */}
+      <WayfindLiveModal
+        isOpen={isLiveModalOpen}
+        onClose={() => setIsLiveModalOpen(false)}
+        profile={selectedProfile}
+        confidenceThreshold={confidenceThreshold}
+        onPhotoCaptured={(file) => {
+          onFilesSelected([file], false);
+        }}
+      />
+
+      {/* Snapshot Camera Capture Modal */}
       <CameraCaptureModal
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
